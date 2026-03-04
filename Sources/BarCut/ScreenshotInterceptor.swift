@@ -71,6 +71,9 @@ final class ScreenshotInterceptor {
     }
 
     private func captureScreenshot(interactive: Bool) {
+        // Suppress clipboard & directory watchers before screencapture runs
+        monitor.beginCapture()
+
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
@@ -82,9 +85,14 @@ final class ScreenshotInterceptor {
             do {
                 try process.run()
                 process.waitUntilExit()
-                guard process.terminationStatus == 0 else { return }
+                guard process.terminationStatus == 0 else {
+                    DispatchQueue.main.async { self?.monitor.endCapture() }
+                    return
+                }
                 DispatchQueue.main.async { self?.processCapture() }
-            } catch {}
+            } catch {
+                DispatchQueue.main.async { self?.monitor.endCapture() }
+            }
         }
     }
 
@@ -93,14 +101,13 @@ final class ScreenshotInterceptor {
         guard let objects = pasteboard.readObjects(forClasses: [NSImage.self], options: nil),
               let image = objects.first as? NSImage else { return }
 
-        // Save to screenshot directory
-        saveToDesktop(image)
-
-        // Add to history + mark pasteboard as handled
-        monitor.addScreenshot(image)
+        // Save to screenshot directory and register the path so the
+        // directory watcher doesn't pick it up a second time.
+        let savedPath = saveToDesktop(image)
+        monitor.addScreenshot(image, savedPath: savedPath)
     }
 
-    private func saveToDesktop(_ image: NSImage) {
+    private func saveToDesktop(_ image: NSImage) -> String? {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
         let filename = "Screenshot \(formatter.string(from: Date())).png"
@@ -108,8 +115,9 @@ final class ScreenshotInterceptor {
 
         guard let tiff = image.tiffRepresentation,
               let rep = NSBitmapImageRep(data: tiff),
-              let png = rep.representation(using: .png, properties: [:]) else { return }
+              let png = rep.representation(using: .png, properties: [:]) else { return nil }
 
         try? png.write(to: URL(fileURLWithPath: path))
+        return path
     }
 }

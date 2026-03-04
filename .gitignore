@@ -1,4 +1,5 @@
 .build/
+BarCut.app/
 .swiftpm/
 *.xcodeproj/
 xcuserdata/

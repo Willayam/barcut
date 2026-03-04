@@ -12,6 +12,7 @@ final class ClipboardMonitor: ObservableObject {
     let screenshotDir: String
     private var directorySource: DispatchSourceFileSystemObject?
     private var dirFD: Int32 = -1
+    private var capturing = false
 
     init() {
         lastChangeCount = NSPasteboard.general.changeCount
@@ -69,6 +70,8 @@ final class ClipboardMonitor: ObservableObject {
     }
 
     private func pickUpNewScreenshots(retries: Int) {
+        guard !capturing else { return }
+
         let url = URL(fileURLWithPath: screenshotDir)
         guard let contents = try? FileManager.default.contentsOfDirectory(
             at: url, includingPropertiesForKeys: [.creationDateKey], options: .skipsHiddenFiles
@@ -114,6 +117,8 @@ final class ClipboardMonitor: ObservableObject {
     }
 
     private func checkClipboard() {
+        guard !capturing else { return }
+
         let pasteboard = NSPasteboard.general
         guard pasteboard.changeCount != lastChangeCount else { return }
         lastChangeCount = pasteboard.changeCount
@@ -136,11 +141,24 @@ final class ClipboardMonitor: ObservableObject {
         }
     }
 
-    func addScreenshot(_ image: NSImage) {
-        // Update change count so clipboard watcher doesn't re-capture this
+    func beginCapture() {
+        capturing = true
+    }
+
+    func endCapture() {
+        capturing = false
         lastChangeCount = NSPasteboard.general.changeCount
-        addImage(image, filePath: nil, autoCopy: false)
+    }
+
+    func addScreenshot(_ image: NSImage, savedPath: String?) {
+        // Register the saved file so the directory watcher doesn't duplicate it
+        if let savedPath { knownFiles.insert(savedPath) }
+
+        addImage(image, filePath: savedPath, autoCopy: false)
         flashCopied(index: 0)
+
+        // Re-enable other detection after state is fully updated
+        endCapture()
     }
 
     func copyToClipboard(_ image: NSImage) {
