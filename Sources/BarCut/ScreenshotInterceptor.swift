@@ -2,6 +2,15 @@ import Cocoa
 import CoreGraphics
 
 final class ScreenshotInterceptor {
+    private static let keycode3: Int64 = 20  // "3" key — full screen capture
+    private static let keycode4: Int64 = 21  // "4" key — selection capture
+
+    private static let filenameFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        return f
+    }()
+
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private let monitor: ClipboardMonitor
@@ -59,10 +68,10 @@ final class ScreenshotInterceptor {
         }
 
         switch keycode {
-        case 21: // 4 — selection capture
+        case Self.keycode4:
             captureScreenshot(interactive: true)
             return nil
-        case 20: // 3 — full screen capture
+        case Self.keycode3:
             captureScreenshot(interactive: false)
             return nil
         default:
@@ -82,35 +91,27 @@ final class ScreenshotInterceptor {
             if interactive { args.insert("-i", at: 0) }
             process.arguments = args
 
-            do {
-                try process.run()
-                process.waitUntilExit()
-                guard process.terminationStatus == 0 else {
-                    DispatchQueue.main.async { self?.monitor.endCapture() }
-                    return
-                }
-                DispatchQueue.main.async { self?.processCapture() }
-            } catch {
-                DispatchQueue.main.async { self?.monitor.endCapture() }
+            let succeeded = (try? process.run()).map { process.waitUntilExit(); return process.terminationStatus == 0 } ?? false
+
+            DispatchQueue.main.async {
+                if succeeded { self?.processCapture() }
+                else { self?.monitor.endCapture() }
             }
         }
     }
 
     private func processCapture() {
-        let pasteboard = NSPasteboard.general
-        guard let objects = pasteboard.readObjects(forClasses: [NSImage.self], options: nil),
-              let image = objects.first as? NSImage else { return }
+        guard let image = monitor.imageFromClipboard() else {
+            monitor.endCapture()
+            return
+        }
 
-        // Save to screenshot directory and register the path so the
-        // directory watcher doesn't pick it up a second time.
         let savedPath = saveToDesktop(image)
         monitor.addScreenshot(image, savedPath: savedPath)
     }
 
     private func saveToDesktop(_ image: NSImage) -> String? {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-        let filename = "Screenshot \(formatter.string(from: Date())).png"
+        let filename = "Screenshot \(Self.filenameFormatter.string(from: Date())).png"
         let path = (monitor.screenshotDir as NSString).appendingPathComponent(filename)
 
         guard let tiff = image.tiffRepresentation,

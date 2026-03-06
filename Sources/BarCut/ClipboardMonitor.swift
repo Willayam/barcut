@@ -17,23 +17,14 @@ final class ClipboardMonitor: ObservableObject {
     init() {
         lastChangeCount = NSPasteboard.general.changeCount
 
-        // Detect screenshot directory
-        let pipe = Pipe()
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
-        process.arguments = ["read", "com.apple.screencapture", "location"]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        try? process.run()
-        process.waitUntilExit()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        screenshotDir = (output?.isEmpty == false) ? output! : NSHomeDirectory() + "/Desktop"
+        // Detect screenshot directory (in-process read, no subprocess)
+        let customDir = UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "location")
+        screenshotDir = (customDir?.isEmpty == false) ? customDir! : NSHomeDirectory() + "/Desktop"
 
         snapshotExistingFiles()
 
         // Clipboard polling (no OS API for this)
-        clipboardCancellable = Timer.publish(every: 0.5, on: .main, in: .common)
+        clipboardCancellable = Timer.publish(every: 1.0, tolerance: 0.5, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.checkClipboard() }
 
@@ -116,6 +107,13 @@ final class ClipboardMonitor: ObservableObject {
         ["png", "jpg", "jpeg", "tiff"].contains(url.pathExtension.lowercased())
     }
 
+    func imageFromClipboard() -> NSImage? {
+        let pasteboard = NSPasteboard.general
+        guard let objects = pasteboard.readObjects(forClasses: [NSImage.self], options: nil),
+              let image = objects.first as? NSImage else { return nil }
+        return image
+    }
+
     private func checkClipboard() {
         guard !capturing else { return }
 
@@ -123,9 +121,7 @@ final class ClipboardMonitor: ObservableObject {
         guard pasteboard.changeCount != lastChangeCount else { return }
         lastChangeCount = pasteboard.changeCount
 
-        guard let objects = pasteboard.readObjects(forClasses: [NSImage.self], options: nil),
-              let image = objects.first as? NSImage else { return }
-
+        guard let image = imageFromClipboard() else { return }
         addImage(image, filePath: nil, autoCopy: false)
     }
 
