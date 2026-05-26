@@ -1,9 +1,16 @@
 import AppKit
 import Combine
+import CryptoKit
+
+struct ImageHistoryEntry: Identifiable {
+    let id: String
+    var image: NSImage
+    var filePath: String?
+}
 
 final class ClipboardMonitor: ObservableObject {
-    @Published var images: [(image: NSImage, filePath: String?)] = []
-    @Published var lastCopiedIndex: Int? = nil
+    @Published var images: [ImageHistoryEntry] = []
+    @Published var lastCopiedID: ImageHistoryEntry.ID? = nil
 
     private var lastChangeCount: Int
     private var clipboardCancellable: AnyCancellable?
@@ -78,6 +85,7 @@ final class ClipboardMonitor: ObservableObject {
         }
 
         if newFiles.isEmpty && retries > 0 {
+            // FIXME: Treat unreadable new screenshots as pending instead of relying on this fixed retry window.
             // File might still be writing — retry quickly
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
                 self?.pickUpNewScreenshots(retries: retries - 1)
@@ -118,23 +126,44 @@ final class ClipboardMonitor: ObservableObject {
         guard !capturing else { return }
 
         let pasteboard = NSPasteboard.general
-        guard pasteboard.changeCount != lastChangeCount else { return }
-        lastChangeCount = pasteboard.changeCount
+        let changeCount = pasteboard.changeCount
+        guard changeCount != lastChangeCount else { return }
+        lastChangeCount = changeCount
 
         guard let image = imageFromClipboard() else { return }
         addImage(image, filePath: nil, autoCopy: false)
     }
 
-    private func addImage(_ image: NSImage, filePath: String?, autoCopy: Bool) {
-        images.insert((image: image, filePath: filePath), at: 0)
+    @discardableResult
+    private func addImage(_ image: NSImage, filePath: String?, autoCopy: Bool) -> ImageHistoryEntry? {
+        let id = imageFingerprint(image) ?? UUID().uuidString
+
+        if let existingIndex = images.firstIndex(where: { $0.id == id }) {
+            var entry = images.remove(at: existingIndex)
+            if let filePath {
+                entry.filePath = filePath
+            }
+            images.insert(entry, at: 0)
+
+            if autoCopy {
+                copyToClipboard(entry.image)
+                flashCopied(id: entry.id)
+            }
+            return entry
+        }
+
+        let entry = ImageHistoryEntry(id: id, image: image, filePath: filePath)
+        images.insert(entry, at: 0)
         if images.count > maxItems {
             images.removeLast(images.count - maxItems)
         }
 
         if autoCopy {
             copyToClipboard(image)
-            flashCopied(index: 0)
+            flashCopied(id: entry.id)
         }
+
+        return entry
     }
 
     func beginCapture() {
@@ -150,8 +179,9 @@ final class ClipboardMonitor: ObservableObject {
         // Register the saved file so the directory watcher doesn't duplicate it
         if let savedPath { knownFiles.insert(savedPath) }
 
-        addImage(image, filePath: savedPath, autoCopy: false)
-        flashCopied(index: 0)
+        if let entry = addImage(image, filePath: savedPath, autoCopy: false) {
+            flashCopied(id: entry.id)
+        }
 
         // Re-enable other detection after state is fully updated
         endCapture()
@@ -164,22 +194,47 @@ final class ClipboardMonitor: ObservableObject {
         lastChangeCount = pasteboard.changeCount
     }
 
-    func copyAndFlash(_ image: NSImage, index: Int) {
-        copyToClipboard(image)
-        flashCopied(index: index)
+    func copyAndFlash(_ entry: ImageHistoryEntry) {
+        copyToClipboard(entry.image)
+        flashCopied(id: entry.id)
     }
 
-    private func flashCopied(index: Int) {
-        lastCopiedIndex = index
+    func addAnnotatedImage(_ image: NSImage) {
+        addImage(image, filePath: nil, autoCopy: true)
+    }
+
+    func copyLiveAnnotatedImage(_ image: NSImage) {
+        copyToClipboard(image)
+    }
+
+    private func flashCopied(id: ImageHistoryEntry.ID) {
+        lastCopiedID = id
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            if self?.lastCopiedIndex == index {
-                self?.lastCopiedIndex = nil
+            if self?.lastCopiedID == id {
+                self?.lastCopiedID = nil
             }
         }
     }
 
     func clearHistory() {
         images.removeAll()
-        lastCopiedIndex = nil
+        lastCopiedID = nil
+    }
+
+    private func imageFingerprint(_ image: NSImage) -> String? {
+        guard let tiff = image.tiffRepresentation else { return nil }
+
+        if let rep = NSBitmapImageRep(data: tiff),
+           let png = rep.representation(using: .png, properties: [:]) {
+            return sha256Hex(png)
+        }
+
+        return sha256Hex(tiff)
+    }
+
+    private func sha256Hex(_ data: Data) -> String {
+        SHA256.hash(data: data)
+            .map { String(format: "%02x", $0) }
+            .joined()
     }
 }
