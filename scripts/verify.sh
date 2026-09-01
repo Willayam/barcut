@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end check on the built bundle: ingest, persist, survive a kill, restore, evict, login item.
+# End-to-end check on the built bundle: ingest, dedup, persist, survive a kill, restore, evict, footprint.
 # Uses temp directories for the store and the screenshot destination so the user's data stays untouched.
 set -euo pipefail
 cd "$(dirname "$0")/.."

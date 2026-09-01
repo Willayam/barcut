@@ -11,15 +11,15 @@ private struct PendingScreenshot {
 
 /// TIFF is encoded only if a consumer asks for it; PNG is already on the pasteboard.
 private final class TIFFPromise: NSObject, NSPasteboardItemDataProvider {
-    private let pngURL: URL
+    private let pngData: Data
 
-    init(pngURL: URL) {
-        self.pngURL = pngURL
+    init(pngData: Data) {
+        self.pngData = pngData
     }
 
     func pasteboard(_ pasteboard: NSPasteboard?, item: NSPasteboardItem, provideDataForType type: NSPasteboard.PasteboardType) {
         guard type == .tiff,
-              let source = CGImageSourceCreateWithURL(pngURL as CFURL, nil),
+              let source = CGImageSourceCreateWithData(pngData as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
               let tiff = ImageStore.encode(image, type: UTType.tiff.identifier) else { return }
         item.setData(tiff, forType: .tiff)
@@ -123,7 +123,7 @@ final class ClipboardMonitor: ObservableObject {
     func copy(_ entry: ImageHistoryEntry) {
         Task { [weak self] in
             guard let self, let pngData = await self.store.pngData(for: entry.id) else { return }
-            self.writeToPasteboard(pngData, promisingTIFFFor: entry.id)
+            self.writeToPasteboard(pngData)
             self.flashCopied(id: entry.id)
         }
     }
@@ -248,8 +248,8 @@ final class ClipboardMonitor: ObservableObject {
         }
     }
 
-    private func writeToPasteboard(_ pngData: Data, promisingTIFFFor id: ImageID) {
-        let promise = TIFFPromise(pngURL: store.fileURL(for: id))
+    private func writeToPasteboard(_ pngData: Data) {
+        let promise = TIFFPromise(pngData: pngData)
         let item = NSPasteboardItem()
         item.setData(pngData, forType: .png)
         item.setDataProvider(promise, forTypes: [.tiff])

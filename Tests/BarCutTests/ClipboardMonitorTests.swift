@@ -103,23 +103,25 @@ final class ClipboardMonitorTests: XCTestCase {
 
 final class ImageStoreTests: XCTestCase {
     func testPNGFileAndTIFFReencodeProduceOneItem() async throws {
-        let directory = try makeTempDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let pngURL = directory.appendingPathComponent("source.png")
-        let png = try pngData(color: .systemPurple)
-        try png.write(to: pngURL)
-        let tiff = try reencode(png, as: .tiff)
-        let storeDirectory = directory.appendingPathComponent("Store", isDirectory: true)
-        let store = ImageStore(directory: storeDirectory, maxItems: 10)
+        for colorSpace in [CGColorSpace.sRGB, CGColorSpace.displayP3] {
+            let directory = try makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let pngURL = directory.appendingPathComponent("source.png")
+            let png = try pngData(color: .systemPurple, colorSpace: colorSpace)
+            try png.write(to: pngURL)
+            let tiff = try reencode(png, as: .tiff)
+            let storeDirectory = directory.appendingPathComponent("Store", isDirectory: true)
+            let store = ImageStore(directory: storeDirectory, maxItems: 10)
 
-        let firstResult = await store.ingest(.screenshotFile(pngURL), screenshotPath: pngURL.path)
-        let secondResult = await store.ingest(.pasteboard(tiff, isPNG: false), screenshotPath: nil)
-        let first = try XCTUnwrap(firstResult)
-        let second = try XCTUnwrap(secondResult)
+            let firstResult = await store.ingest(.screenshotFile(pngURL), screenshotPath: pngURL.path)
+            let secondResult = await store.ingest(.pasteboard(tiff, isPNG: false), screenshotPath: nil)
+            let first = try XCTUnwrap(firstResult)
+            let second = try XCTUnwrap(secondResult)
 
-        XCTAssertEqual(second.entries.count, 1)
-        XCTAssertEqual(second.entries.first?.id, first.entries.first?.id)
-        XCTAssertEqual(second.entries.first?.screenshotPath, pngURL.path)
+            XCTAssertEqual(second.entries.count, 1, "\(colorSpace)")
+            XCTAssertEqual(second.entries.first?.id, first.entries.first?.id, "\(colorSpace)")
+            XCTAssertEqual(second.entries.first?.screenshotPath, pngURL.path)
+        }
     }
 
     func testEvictionAndClearDeletePNGFiles() async throws {
@@ -167,33 +169,45 @@ final class ImageStoreTests: XCTestCase {
         XCTAssertEqual(try manifestItemCount(in: directory), 0)
     }
 
-    func testTruncatedManifestLoadsEmptyAndRemovesPNGs() async throws {
-        let directory = try makeTempDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let orphan = directory.appendingPathComponent("orphan.png")
-        try pngData(color: .systemYellow).write(to: orphan)
-        try Data("{\"version\":1,\"items\":[".utf8).write(
-            to: directory.appendingPathComponent("manifest.json")
-        )
+    func testUnreadableOrNewerManifestRecoversItemsFromFiles() async throws {
+        let manifests = [
+            "{\"version\":1,\"items\":[",
+            "{\"version\":2,\"items\":[]}",
+            "{\"version\":1,\"items\":[{\"id\":{\"hex\":\"../escape\"}}]}",
+        ]
+        for manifest in manifests {
+            let directory = try makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let keptName = String(repeating: "b", count: 64) + ".png"
+            try pngData(color: .systemYellow).write(to: directory.appendingPathComponent(keptName))
+            let orphan = directory.appendingPathComponent("orphan.png")
+            try pngData(color: .systemTeal).write(to: orphan)
+            try Data(manifest.utf8).write(to: directory.appendingPathComponent("manifest.json"))
 
-        let snapshot = await ImageStore(directory: directory, maxItems: 10).current()
+            let snapshot = await ImageStore(directory: directory, maxItems: 10).current()
 
-        XCTAssertTrue(snapshot.entries.isEmpty)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: orphan.path))
-        XCTAssertEqual(try manifestItemCount(in: directory), 0)
+            XCTAssertEqual(snapshot.entries.map(\.id.hex), [String(repeating: "b", count: 64)], manifest)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: orphan.path), manifest)
+            XCTAssertEqual(try manifestItemCount(in: directory), 1, manifest)
+        }
     }
 
-    func testMissingManifestLoadsEmptyAndRemovesPNGs() async throws {
+    func testMissingManifestRecoversItemsFromFilesNewestFirst() async throws {
         let directory = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let orphan = directory.appendingPathComponent("orphan.png")
-        try pngData(color: .systemBrown).write(to: orphan)
+        let older = String(repeating: "a", count: 64)
+        let newer = String(repeating: "c", count: 64)
+        try pngData(color: .systemBrown).write(to: directory.appendingPathComponent(older + ".png"))
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSinceNow: -60)],
+            ofItemAtPath: directory.appendingPathComponent(older + ".png").path
+        )
+        try pngData(color: .systemPink).write(to: directory.appendingPathComponent(newer + ".png"))
 
         let snapshot = await ImageStore(directory: directory, maxItems: 10).current()
 
-        XCTAssertTrue(snapshot.entries.isEmpty)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: orphan.path))
-        XCTAssertEqual(try manifestItemCount(in: directory), 0)
+        XCTAssertEqual(snapshot.entries.map(\.id.hex), [newer, older])
+        XCTAssertEqual(try manifestItemCount(in: directory), 2)
     }
 
     private func makeTempDirectory() throws -> URL {
@@ -233,10 +247,10 @@ private struct TestDirectories {
     let store: URL
 }
 
-private func pngData(color: NSColor) throws -> Data {
+private func pngData(color: NSColor, colorSpace colorSpaceName: CFString = CGColorSpace.sRGB) throws -> Data {
     let width = 32
     let height = 24
-    let colorSpace = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+    let colorSpace = try XCTUnwrap(CGColorSpace(name: colorSpaceName))
     let context = try XCTUnwrap(
         CGContext(
             data: nil,

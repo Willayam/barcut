@@ -133,13 +133,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
 @MainActor
 enum LoginItem {
-    private static let didAutoRegisterKey = "didAutoRegisterLoginItem"
+    private static let decidedKey = "loginItemDecided"
 
     static var isEnabled: Bool {
         SMAppService.mainApp.status == .enabled
     }
 
     static func setEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(true, forKey: decidedKey)
         do {
             if enabled {
                 try SMAppService.mainApp.register()
@@ -156,7 +157,7 @@ enum LoginItem {
         defer { logStatus() }
         let defaults = UserDefaults.standard
         // A bundle that has never registered reports .notFound, not .notRegistered.
-        guard defaults.object(forKey: didAutoRegisterKey) == nil,
+        guard defaults.object(forKey: decidedKey) == nil,
               [.notRegistered, .notFound].contains(SMAppService.mainApp.status) else { return }
 
         let bundlePath = Bundle.main.bundlePath
@@ -165,7 +166,7 @@ enum LoginItem {
 
         do {
             try SMAppService.mainApp.register()
-            defaults.set(true, forKey: didAutoRegisterKey)
+            defaults.set(true, forKey: decidedKey)
         } catch {
             historyLogger.notice("login item change failed \(error.localizedDescription, privacy: .public)")
         }

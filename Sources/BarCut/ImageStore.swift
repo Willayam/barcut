@@ -10,6 +10,19 @@ struct ImageID: Hashable, Codable, Sendable {
     let hex: String
 
     var fileName: String { hex + ".png" }
+
+    init?(hex: String) {
+        guard hex.count == 64, hex.allSatisfy(\.isHexDigit) else { return nil }
+        self.hex = hex
+    }
+
+    init(from decoder: Decoder) throws {
+        let hex = try decoder.container(keyedBy: CodingKeys.self).decode(String.self, forKey: .hex)
+        guard let id = ImageID(hex: hex) else {
+            throw DecodingError.dataCorruptedError(forKey: .hex, in: try decoder.container(keyedBy: CodingKeys.self), debugDescription: "not a sha256 hex")
+        }
+        self = id
+    }
 }
 
 // Unchecked because CGImage is immutable once the store has built the entry.
@@ -134,9 +147,9 @@ actor ImageStore {
         let manifestURL = directory.appendingPathComponent("manifest.json")
         let manifest = (try? Data(contentsOf: manifestURL))
             .flatMap { try? JSONDecoder().decode(Manifest.self, from: $0) }
-        let loadedItems = manifest?.version == 1 ? manifest?.items ?? [] : []
+        let candidates = manifest?.version == 1 ? manifest!.items : itemsRecoveredFromFiles()
 
-        for item in loadedItems {
+        for item in candidates {
             guard let decoded = decode(CGImageSourceCreateWithURL(fileURL(for: item.id) as CFURL, nil)),
                   let thumbnail = makeThumbnail(decoded.image) else { continue }
             items.append(item)
@@ -162,6 +175,24 @@ actor ImageStore {
 
         writeManifest()
         historyLogger.notice("restored \(self.items.count) items")
+    }
+
+    /// A missing or unreadable manifest must never cost the images, so order falls back to file dates.
+    private func itemsRecoveredFromFiles() -> [Manifest.Item] {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: .skipsHiddenFiles
+        )) ?? []
+        return files
+            .compactMap { url -> (id: ImageID, date: Date)? in
+                guard url.pathExtension == "png",
+                      let id = ImageID(hex: url.deletingPathExtension().lastPathComponent) else { return nil }
+                let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return (id, date)
+            }
+            .sorted { $0.date > $1.date }
+            .map { Manifest.Item(id: $0.id, screenshotPath: nil) }
     }
 
     private func prepare(_ source: ImageSource) -> (id: ImageID, thumbnail: CGImage, pngData: Data)? {
@@ -309,7 +340,7 @@ actor ImageStore {
         )
     }
 
-    nonisolated func fileURL(for id: ImageID) -> URL {
+    private func fileURL(for id: ImageID) -> URL {
         directory.appendingPathComponent(id.fileName)
     }
 
