@@ -155,8 +155,9 @@ enum LoginItem {
     static func autoRegisterIfNeeded() {
         defer { logStatus() }
         let defaults = UserDefaults.standard
+        // A bundle that has never registered reports .notFound, not .notRegistered.
         guard defaults.object(forKey: didAutoRegisterKey) == nil,
-              SMAppService.mainApp.status == .notRegistered else { return }
+              [.notRegistered, .notFound].contains(SMAppService.mainApp.status) else { return }
 
         let bundlePath = Bundle.main.bundlePath
         let userApplications = NSHomeDirectory() + "/Applications/"
