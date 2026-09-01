@@ -1,4 +1,5 @@
 import Combine
+import ServiceManagement
 import SwiftUI
 
 @main
@@ -12,6 +13,7 @@ enum BarCutApp {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
@@ -20,6 +22,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var monitorCancellable: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        LoginItem.autoRegisterIfNeeded()
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             let image = NSImage(systemSymbolName: "photo.on.rectangle.angled", accessibilityDescription: "BarCut")
@@ -35,8 +39,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         popover.contentSize = NSSize(width: 280, height: ImageHistoryView.preferredContentHeight(for: monitor.images.count))
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(
-            rootView: ImageHistoryView(monitor: monitor) { [weak self] image, tool in
-                self?.openAnnotationEditor(image: image, initialTool: tool)
+            rootView: ImageHistoryView(monitor: monitor) { [weak self] entry, tool in
+                Task { @MainActor in
+                    guard let self, let image = await self.monitor.fullImage(for: entry) else { return }
+                    self.openAnnotationEditor(image: image, initialTool: tool)
+                }
             }
         )
 
@@ -121,5 +128,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard let closingWindow = notification.object as? NSWindow else { return }
         editorWindows.removeAll { $0 === closingWindow }
+    }
+}
+
+@MainActor
+enum LoginItem {
+    private static let didAutoRegisterKey = "didAutoRegisterLoginItem"
+
+    static var isEnabled: Bool {
+        SMAppService.mainApp.status == .enabled
+    }
+
+    static func setEnabled(_ enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            historyLogger.notice("login item change failed \(error.localizedDescription, privacy: .public)")
+        }
+        logStatus()
+    }
+
+    static func autoRegisterIfNeeded() {
+        defer { logStatus() }
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: didAutoRegisterKey) == nil,
+              SMAppService.mainApp.status == .notRegistered else { return }
+
+        let bundlePath = Bundle.main.bundlePath
+        let userApplications = NSHomeDirectory() + "/Applications/"
+        guard bundlePath.hasPrefix("/Applications/") || bundlePath.hasPrefix(userApplications) else { return }
+
+        do {
+            try SMAppService.mainApp.register()
+            defaults.set(true, forKey: didAutoRegisterKey)
+        } catch {
+            historyLogger.notice("login item change failed \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private static func logStatus() {
+        historyLogger.notice("login item status \(SMAppService.mainApp.status.rawValue) at \(Bundle.main.bundlePath, privacy: .public)")
     }
 }

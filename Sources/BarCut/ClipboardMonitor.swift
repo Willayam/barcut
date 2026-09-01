@@ -1,12 +1,7 @@
 import AppKit
 import Combine
-import CryptoKit
-
-struct ImageHistoryEntry: Identifiable {
-    let id: String
-    var image: NSImage
-    var filePath: String?
-}
+import ImageIO
+import UniformTypeIdentifiers
 
 private struct PendingScreenshot {
     let url: URL
@@ -14,128 +9,196 @@ private struct PendingScreenshot {
     let firstObservedAt: Date
 }
 
-final class ClipboardMonitor: ObservableObject {
-    @Published var images: [ImageHistoryEntry] = []
-    @Published var lastCopiedID: ImageHistoryEntry.ID? = nil
+/// TIFF is encoded only if a consumer asks for it; PNG is already on the pasteboard.
+private final class TIFFPromise: NSObject, NSPasteboardItemDataProvider {
+    private let pngURL: URL
 
+    init(pngURL: URL) {
+        self.pngURL = pngURL
+    }
+
+    func pasteboard(_ pasteboard: NSPasteboard?, item: NSPasteboardItem, provideDataForType type: NSPasteboard.PasteboardType) {
+        guard type == .tiff,
+              let source = CGImageSourceCreateWithURL(pngURL as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+              let tiff = ImageStore.encode(image, type: UTType.tiff.identifier) else { return }
+        item.setData(tiff, forType: .tiff)
+    }
+}
+
+@MainActor
+final class ClipboardMonitor: ObservableObject {
+    @Published private(set) var images: [ImageHistoryEntry] = []
+    @Published private(set) var lastCopiedID: ImageID?
+
+    let screenshotDir: String
+
+    private let store: ImageStore
+    private var appliedRevision = -1
     private var lastChangeCount: Int
     private var clipboardCancellable: AnyCancellable?
-    private let maxItems: Int
     private var knownFiles: Set<String> = []
-    let screenshotDir: String
     private var pendingScreenshots: [String: PendingScreenshot] = [:]
     private var pendingRetryWorkItem: DispatchWorkItem?
     private var directorySource: DispatchSourceFileSystemObject?
-    private var dirFD: Int32 = -1
+    private var tiffPromise: TIFFPromise?
     private let pendingRetryInterval: TimeInterval = 0.25
     private let pendingScreenshotTimeout: TimeInterval = 5.0
 
     init(
         screenshotDir: String? = nil,
+        storeDir: String? = nil,
         maxItems: Int = 10,
-        pollClipboard: Bool = true,
+        pollClipboard: Bool? = nil,
         watchScreenshots: Bool = true
     ) {
-        self.maxItems = maxItems
+        let environment = ProcessInfo.processInfo.environment
+        let customScreenshotDir = UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "location")
+        let resolvedScreenshotDir = screenshotDir
+            ?? environment["BARCUT_SCREENSHOT_DIR"]
+            ?? ((customScreenshotDir?.isEmpty == false) ? customScreenshotDir! : NSHomeDirectory() + "/Desktop")
+        let defaultStoreDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("BarCut/History", isDirectory: true)
+        let resolvedStoreDir = storeDir.map(URL.init(fileURLWithPath:))
+            ?? environment["BARCUT_STORE_DIR"].map(URL.init(fileURLWithPath:))
+            ?? defaultStoreDir
+        let shouldPollClipboard = pollClipboard ?? (environment["BARCUT_POLL_CLIPBOARD"] != "0")
+
+        self.screenshotDir = resolvedScreenshotDir
+        store = ImageStore(directory: resolvedStoreDir, maxItems: maxItems)
         lastChangeCount = NSPasteboard.general.changeCount
 
-        // Detect screenshot directory (in-process read, no subprocess)
-        let customDir = UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "location")
-        self.screenshotDir = screenshotDir ?? ((customDir?.isEmpty == false) ? customDir! : NSHomeDirectory() + "/Desktop")
-
         snapshotExistingFiles()
-
-        // Clipboard polling (no OS API for this)
-        if pollClipboard {
-            clipboardCancellable = Timer.publish(every: 1.0, tolerance: 0.5, on: .main, in: .common)
+        if shouldPollClipboard {
+            clipboardCancellable = Timer.publish(every: 0.5, tolerance: 0.2, on: .main, in: .common)
                 .autoconnect()
-                .sink { [weak self] _ in self?.checkClipboard() }
+                .sink { [weak self] _ in
+                    Task { @MainActor in
+                        await self?.checkClipboard()
+                    }
+                }
         }
-
-        // Watch screenshot folder (event-driven)
         if watchScreenshots {
             watchScreenshotFolder()
+        }
+        Task { [weak self] in
+            await self?.refresh()
         }
     }
 
     deinit {
         pendingRetryWorkItem?.cancel()
         directorySource?.cancel()
-        if dirFD >= 0 { close(dirFD) }
     }
 
-    private func watchScreenshotFolder() {
-        dirFD = open(screenshotDir, O_EVTONLY)
-        guard dirFD >= 0 else { return }
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: dirFD,
-            eventMask: .write,
-            queue: .main
-        )
-
-        source.setEventHandler { [weak self] in
-            self?.scanScreenshotDestination()
-        }
-
-        source.setCancelHandler { [weak self] in
-            if let fd = self?.dirFD, fd >= 0 { close(fd) }
-            self?.dirFD = -1
-        }
-
-        source.resume()
-        directorySource = source
+    func refresh() async {
+        apply(await store.current())
     }
 
-    func scanScreenshotDestination() {
+    func scanScreenshotDestination() async {
         discoverPendingScreenshots()
-        importReadablePendingScreenshots()
-        schedulePendingRetryIfNeeded()
-    }
-
-    private func discoverPendingScreenshots() {
-        let url = URL(fileURLWithPath: screenshotDir)
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: url, includingPropertiesForKeys: [.creationDateKey], options: .skipsHiddenFiles
-        ) else { return }
-
-        for file in contents where isImageFile(file) {
-            guard !knownFiles.contains(file.path),
-                  pendingScreenshots[file.path] == nil else { continue }
-
-            let date = (try? file.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date()
-            pendingScreenshots[file.path] = PendingScreenshot(
-                url: file,
-                creationDate: date,
-                firstObservedAt: Date()
-            )
-        }
-    }
-
-    private func importReadablePendingScreenshots() {
+        let pending = pendingScreenshots.values.sorted { $0.creationDate < $1.creationDate }
         let now = Date()
-        var readyScreenshots: [(url: URL, date: Date, image: NSImage)] = []
 
-        for (path, pending) in pendingScreenshots {
+        for screenshot in pending {
+            let path = screenshot.url.path
             guard FileManager.default.fileExists(atPath: path) else {
                 pendingScreenshots.removeValue(forKey: path)
                 continue
             }
 
-            if let image = NSImage(contentsOf: pending.url) {
+            if let snapshot = await store.ingest(.screenshotFile(screenshot.url), screenshotPath: path) {
                 knownFiles.insert(path)
                 pendingScreenshots.removeValue(forKey: path)
-                readyScreenshots.append((url: pending.url, date: pending.creationDate, image: image))
-            } else if now.timeIntervalSince(pending.firstObservedAt) >= pendingScreenshotTimeout {
+                apply(snapshot)
+            } else if now.timeIntervalSince(screenshot.firstObservedAt) >= pendingScreenshotTimeout {
                 knownFiles.insert(path)
                 pendingScreenshots.removeValue(forKey: path)
             }
         }
 
-        readyScreenshots.sort { $0.date > $1.date }
+        schedulePendingRetryIfNeeded()
+    }
 
-        for screenshot in readyScreenshots {
-            addImage(screenshot.image, filePath: screenshot.url.path, autoCopy: false)
+    func copy(_ entry: ImageHistoryEntry) {
+        Task { [weak self] in
+            guard let self, let pngData = await self.store.pngData(for: entry.id) else { return }
+            self.writeToPasteboard(pngData, promisingTIFFFor: entry.id)
+            self.flashCopied(id: entry.id)
+        }
+    }
+
+    func fullImage(for entry: ImageHistoryEntry) async -> NSImage? {
+        guard let image = await store.fullImage(for: entry.id) else { return nil }
+        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+    }
+
+    func addAnnotatedImage(_ image: NSImage) {
+        guard let rendered = cgImage(from: image) else { return }
+        Task { [weak self] in
+            guard let self,
+                  let snapshot = await self.store.ingest(.rendered(rendered), screenshotPath: nil) else { return }
+            self.apply(snapshot)
+            guard let entry = snapshot.entries.first else { return }
+            self.copy(entry)
+        }
+    }
+
+    func copyLiveAnnotatedImage(_ image: NSImage) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.writeObjects([image])
+        lastChangeCount = pasteboard.changeCount
+    }
+
+    func clearHistory() {
+        Task { [weak self] in
+            guard let self else { return }
+            self.apply(await self.store.clear())
+            self.lastCopiedID = nil
+        }
+    }
+
+    private func watchScreenshotFolder() {
+        let descriptor = open(screenshotDir, O_EVTONLY)
+        guard descriptor >= 0 else {
+            historyLogger.notice("watch failed \(self.screenshotDir, privacy: .public)")
+            return
+        }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: descriptor,
+            eventMask: .write,
+            queue: .main
+        )
+        source.setEventHandler { [weak self] in
+            Task { @MainActor in
+                await self?.scanScreenshotDestination()
+            }
+        }
+        source.setCancelHandler {
+            close(descriptor)
+        }
+        source.resume()
+        directorySource = source
+    }
+
+    private func discoverPendingScreenshots() {
+        let directory = URL(fileURLWithPath: screenshotDir)
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.creationDateKey],
+            options: .skipsHiddenFiles
+        ) else { return }
+
+        for file in contents where isImageFile(file) {
+            guard !knownFiles.contains(file.path), pendingScreenshots[file.path] == nil else { continue }
+            let creationDate = (try? file.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date()
+            pendingScreenshots[file.path] = PendingScreenshot(
+                url: file,
+                creationDate: creationDate,
+                firstObservedAt: Date()
+            )
         }
     }
 
@@ -147,97 +210,64 @@ final class ClipboardMonitor: ObservableObject {
         }
 
         let workItem = DispatchWorkItem { [weak self] in
-            self?.pendingRetryWorkItem = nil
-            self?.scanScreenshotDestination()
+            Task { @MainActor in
+                self?.pendingRetryWorkItem = nil
+                await self?.scanScreenshotDestination()
+            }
         }
         pendingRetryWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + pendingRetryInterval, execute: workItem)
     }
 
     private func snapshotExistingFiles() {
-        let url = URL(fileURLWithPath: screenshotDir)
+        let directory = URL(fileURLWithPath: screenshotDir)
         guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: url, includingPropertiesForKeys: nil, options: .skipsHiddenFiles
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: .skipsHiddenFiles
         ) else { return }
-        for file in contents where isImageFile(file) {
-            knownFiles.insert(file.path)
-        }
+        knownFiles = Set(contents.filter(isImageFile).map(\.path))
     }
 
     private func isImageFile(_ url: URL) -> Bool {
         ["png", "jpg", "jpeg", "tiff"].contains(url.pathExtension.lowercased())
     }
 
-    func imageFromClipboard() -> NSImage? {
-        let pasteboard = NSPasteboard.general
-        guard let objects = pasteboard.readObjects(forClasses: [NSImage.self], options: nil),
-              let image = objects.first as? NSImage else { return nil }
-        return image
-    }
-
-    private func checkClipboard() {
+    private func checkClipboard() async {
         let pasteboard = NSPasteboard.general
         let changeCount = pasteboard.changeCount
         guard changeCount != lastChangeCount else { return }
         lastChangeCount = changeCount
 
-        guard let image = imageFromClipboard() else { return }
-        addImage(image, filePath: nil, autoCopy: false)
+        if let pngData = pasteboard.data(forType: .png),
+           let snapshot = await store.ingest(.pasteboard(pngData, isPNG: true), screenshotPath: nil) {
+            apply(snapshot)
+        } else if let tiffData = pasteboard.data(forType: .tiff),
+                  let snapshot = await store.ingest(.pasteboard(tiffData, isPNG: false), screenshotPath: nil) {
+            apply(snapshot)
+        }
     }
 
-    @discardableResult
-    private func addImage(_ image: NSImage, filePath: String?, autoCopy: Bool) -> ImageHistoryEntry? {
-        let id = imageFingerprint(image) ?? UUID().uuidString
+    private func writeToPasteboard(_ pngData: Data, promisingTIFFFor id: ImageID) {
+        let promise = TIFFPromise(pngURL: store.fileURL(for: id))
+        let item = NSPasteboardItem()
+        item.setData(pngData, forType: .png)
+        item.setDataProvider(promise, forTypes: [.tiff])
+        tiffPromise = promise
 
-        if let existingIndex = images.firstIndex(where: { $0.id == id }) {
-            var entry = images.remove(at: existingIndex)
-            if let filePath {
-                entry.filePath = filePath
-            }
-            images.insert(entry, at: 0)
-
-            if autoCopy {
-                copyToClipboard(entry.image)
-                flashCopied(id: entry.id)
-            }
-            return entry
-        }
-
-        let entry = ImageHistoryEntry(id: id, image: image, filePath: filePath)
-        images.insert(entry, at: 0)
-        if images.count > maxItems {
-            images.removeLast(images.count - maxItems)
-        }
-
-        if autoCopy {
-            copyToClipboard(image)
-            flashCopied(id: entry.id)
-        }
-
-        return entry
-    }
-
-    func copyToClipboard(_ image: NSImage) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.writeObjects([image])
+        pasteboard.writeObjects([item])
         lastChangeCount = pasteboard.changeCount
     }
 
-    func copyAndFlash(_ entry: ImageHistoryEntry) {
-        copyToClipboard(entry.image)
-        flashCopied(id: entry.id)
+    private func apply(_ snapshot: Snapshot) {
+        guard snapshot.revision > appliedRevision else { return }
+        appliedRevision = snapshot.revision
+        images = snapshot.entries
     }
 
-    func addAnnotatedImage(_ image: NSImage) {
-        addImage(image, filePath: nil, autoCopy: true)
-    }
-
-    func copyLiveAnnotatedImage(_ image: NSImage) {
-        copyToClipboard(image)
-    }
-
-    private func flashCopied(id: ImageHistoryEntry.ID) {
+    private func flashCopied(id: ImageID) {
         lastCopiedID = id
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             if self?.lastCopiedID == id {
@@ -246,25 +276,8 @@ final class ClipboardMonitor: ObservableObject {
         }
     }
 
-    func clearHistory() {
-        images.removeAll()
-        lastCopiedID = nil
-    }
-
-    private func imageFingerprint(_ image: NSImage) -> String? {
-        guard let tiff = image.tiffRepresentation else { return nil }
-
-        if let rep = NSBitmapImageRep(data: tiff),
-           let png = rep.representation(using: .png, properties: [:]) {
-            return sha256Hex(png)
-        }
-
-        return sha256Hex(tiff)
-    }
-
-    private func sha256Hex(_ data: Data) -> String {
-        SHA256.hash(data: data)
-            .map { String(format: "%02x", $0) }
-            .joined()
+    private func cgImage(from image: NSImage) -> CGImage? {
+        var rect = NSRect(origin: .zero, size: image.size)
+        return image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
     }
 }

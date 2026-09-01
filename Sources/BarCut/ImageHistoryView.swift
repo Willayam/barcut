@@ -9,7 +9,8 @@ struct ImageHistoryView: View {
     static let emptyStateHeight: CGFloat = 118
 
     @ObservedObject var monitor: ClipboardMonitor
-    let onAnnotate: (NSImage, AnnotationTool) -> Void
+    let onAnnotate: (ImageHistoryEntry, AnnotationTool) -> Void
+    @State private var loginItemEnabled = LoginItem.isEnabled
 
     static func preferredContentHeight(for imageCount: Int) -> CGFloat {
         if imageCount == 0 {
@@ -51,12 +52,23 @@ struct ImageHistoryView: View {
                 .buttonStyle(.borderless)
                 .font(.caption)
             }
-            Button("Quit") {
-                NSApplication.shared.terminate(nil)
+            Menu {
+                Toggle("Open at Login", isOn: Binding(
+                    get: { loginItemEnabled },
+                    set: { enabled in
+                        LoginItem.setEnabled(enabled)
+                        loginItemEnabled = LoginItem.isEnabled
+                    }
+                ))
+                Divider()
+                Button("Quit") {
+                    NSApplication.shared.terminate(nil)
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
             }
-            .buttonStyle(.borderless)
-            .font(.caption)
-            .foregroundColor(.secondary)
+            .menuStyle(.borderlessButton)
+            .fixedSize()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -84,13 +96,13 @@ struct ImageHistoryView: View {
             LazyVStack(spacing: Self.rowSpacing) {
                 ForEach(monitor.images) { entry in
                     ImageHistoryRow(
-                        image: entry.image,
+                        thumbnail: entry.thumbnail,
                         isCopied: monitor.lastCopiedID == entry.id,
                         onCopy: {
-                            monitor.copyAndFlash(entry)
+                            monitor.copy(entry)
                         },
                         onAnnotate: { tool in
-                            onAnnotate(entry.image, tool)
+                            onAnnotate(entry, tool)
                         }
                     )
                 }
@@ -102,7 +114,7 @@ struct ImageHistoryView: View {
 }
 
 private struct ImageHistoryRow: View {
-    let image: NSImage
+    let thumbnail: CGImage
     let isCopied: Bool
     let onCopy: () -> Void
     let onAnnotate: (AnnotationTool) -> Void
@@ -111,7 +123,7 @@ private struct ImageHistoryRow: View {
 
     var body: some View {
         ZStack {
-            Image(nsImage: image)
+            Image(decorative: thumbnail, scale: 1)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(maxWidth: .infinity, minHeight: ImageHistoryView.rowHeight, maxHeight: ImageHistoryView.rowHeight)

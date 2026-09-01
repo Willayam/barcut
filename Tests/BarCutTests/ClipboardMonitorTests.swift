@@ -1,90 +1,261 @@
 import AppKit
+import ImageIO
+import UniformTypeIdentifiers
 import XCTest
 @testable import BarCut
 
+@MainActor
 final class ClipboardMonitorTests: XCTestCase {
-    private var tempDirs: [URL] = []
+    func testImportsReadableScreenshotFromObservedDestination() async throws {
+        let directories = try makeDirectories()
+        defer { removeDirectories(directories) }
+        let monitor = makeMonitor(directories)
 
-    override func tearDownWithError() throws {
-        for dir in tempDirs {
-            try? FileManager.default.removeItem(at: dir)
-        }
-        tempDirs.removeAll()
-        try super.tearDownWithError()
-    }
-
-    func testImportsReadableScreenshotFromObservedDestination() throws {
-        let dir = try makeTempDir()
-        let monitor = ClipboardMonitor(
-            screenshotDir: dir.path,
-            pollClipboard: false,
-            watchScreenshots: false
-        )
-
-        let imageURL = dir.appendingPathComponent("Screenshot.png")
-        try validPNGData().write(to: imageURL)
-
-        monitor.scanScreenshotDestination()
+        let imageURL = directories.screenshots.appendingPathComponent("Screenshot.png")
+        try pngData(color: .systemRed).write(to: imageURL)
+        await monitor.scanScreenshotDestination()
 
         XCTAssertEqual(monitor.images.count, 1)
-        XCTAssertEqual((monitor.images.first?.filePath as NSString?)?.lastPathComponent, imageURL.lastPathComponent)
+        XCTAssertEqual(
+            monitor.images.first?.screenshotPath.map { URL(fileURLWithPath: $0).lastPathComponent },
+            imageURL.lastPathComponent
+        )
         XCTAssertNil(monitor.lastCopiedID)
     }
 
-    func testPendingScreenshotDoesNotEnterHistoryUntilReadable() throws {
-        let dir = try makeTempDir()
-        let monitor = ClipboardMonitor(
-            screenshotDir: dir.path,
-            pollClipboard: false,
-            watchScreenshots: false
-        )
+    func testPendingScreenshotDoesNotEnterHistoryUntilReadable() async throws {
+        let directories = try makeDirectories()
+        defer { removeDirectories(directories) }
+        let monitor = makeMonitor(directories)
 
-        let imageURL = dir.appendingPathComponent("Pending.png")
+        let imageURL = directories.screenshots.appendingPathComponent("Pending.png")
         try Data("not an image yet".utf8).write(to: imageURL)
-
-        monitor.scanScreenshotDestination()
+        await monitor.scanScreenshotDestination()
         XCTAssertTrue(monitor.images.isEmpty)
 
-        try validPNGData().write(to: imageURL)
-        monitor.scanScreenshotDestination()
+        try pngData(color: .systemBlue).write(to: imageURL)
+        await monitor.scanScreenshotDestination()
 
         XCTAssertEqual(monitor.images.count, 1)
-        XCTAssertEqual((monitor.images.first?.filePath as NSString?)?.lastPathComponent, imageURL.lastPathComponent)
+        XCTAssertEqual(
+            monitor.images.first?.screenshotPath.map { URL(fileURLWithPath: $0).lastPathComponent },
+            imageURL.lastPathComponent
+        )
     }
 
-    func testExistingFilesAtStartupAreNotImported() throws {
-        let dir = try makeTempDir()
-        let imageURL = dir.appendingPathComponent("Existing.png")
-        try validPNGData().write(to: imageURL)
+    func testExistingFilesAtStartupAreNotImported() async throws {
+        let directories = try makeDirectories()
+        defer { removeDirectories(directories) }
+        let imageURL = directories.screenshots.appendingPathComponent("Existing.png")
+        try pngData(color: .systemGreen).write(to: imageURL)
 
-        let monitor = ClipboardMonitor(
-            screenshotDir: dir.path,
-            pollClipboard: false,
-            watchScreenshots: false
-        )
-
-        monitor.scanScreenshotDestination()
+        let monitor = makeMonitor(directories)
+        await monitor.scanScreenshotDestination()
 
         XCTAssertTrue(monitor.images.isEmpty)
     }
 
-    private func makeTempDir() throws -> URL {
-        let dir = FileManager.default.temporaryDirectory
+    func testHistorySurvivesRelaunchInTheSameOrder() async throws {
+        let directories = try makeDirectories()
+        defer { removeDirectories(directories) }
+        let first = makeMonitor(directories)
+
+        try pngData(color: .systemRed).write(
+            to: directories.screenshots.appendingPathComponent("First.png")
+        )
+        await first.scanScreenshotDestination()
+        try pngData(color: .systemBlue).write(
+            to: directories.screenshots.appendingPathComponent("Second.png")
+        )
+        await first.scanScreenshotDestination()
+        let expectedIDs = first.images.map(\.id)
+
+        let second = makeMonitor(directories)
+        await second.refresh()
+
+        XCTAssertEqual(second.images.map(\.id), expectedIDs)
+    }
+
+    private func makeMonitor(_ directories: TestDirectories, maxItems: Int = 10) -> ClipboardMonitor {
+        ClipboardMonitor(
+            screenshotDir: directories.screenshots.path,
+            storeDir: directories.store.path,
+            maxItems: maxItems,
+            pollClipboard: false,
+            watchScreenshots: false
+        )
+    }
+
+    private func makeDirectories() throws -> TestDirectories {
+        let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("BarCutTests-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        tempDirs.append(dir)
-        return dir
+        let screenshots = root.appendingPathComponent("Screenshots", isDirectory: true)
+        let store = root.appendingPathComponent("Store", isDirectory: true)
+        try FileManager.default.createDirectory(at: screenshots, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: store, withIntermediateDirectories: true)
+        return TestDirectories(root: root, screenshots: screenshots, store: store)
     }
 
-    private func validPNGData() throws -> Data {
-        let image = NSImage(size: NSSize(width: 32, height: 32))
-        image.lockFocus()
-        NSColor.systemRed.setFill()
-        NSRect(x: 0, y: 0, width: 32, height: 32).fill()
-        image.unlockFocus()
-
-        let tiff = try XCTUnwrap(image.tiffRepresentation)
-        let rep = try XCTUnwrap(NSBitmapImageRep(data: tiff))
-        return try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+    private func removeDirectories(_ directories: TestDirectories) {
+        try? FileManager.default.removeItem(at: directories.root)
     }
+}
+
+final class ImageStoreTests: XCTestCase {
+    func testPNGFileAndTIFFReencodeProduceOneItem() async throws {
+        let directory = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let pngURL = directory.appendingPathComponent("source.png")
+        let png = try pngData(color: .systemPurple)
+        try png.write(to: pngURL)
+        let tiff = try reencode(png, as: .tiff)
+        let storeDirectory = directory.appendingPathComponent("Store", isDirectory: true)
+        let store = ImageStore(directory: storeDirectory, maxItems: 10)
+
+        let firstResult = await store.ingest(.screenshotFile(pngURL), screenshotPath: pngURL.path)
+        let secondResult = await store.ingest(.pasteboard(tiff, isPNG: false), screenshotPath: nil)
+        let first = try XCTUnwrap(firstResult)
+        let second = try XCTUnwrap(secondResult)
+
+        XCTAssertEqual(second.entries.count, 1)
+        XCTAssertEqual(second.entries.first?.id, first.entries.first?.id)
+        XCTAssertEqual(second.entries.first?.screenshotPath, pngURL.path)
+    }
+
+    func testEvictionAndClearDeletePNGFiles() async throws {
+        let directory = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ImageStore(directory: directory, maxItems: 2)
+        let red = try pngData(color: .systemRed)
+        let green = try pngData(color: .systemGreen)
+        let blue = try pngData(color: .systemBlue)
+
+        let firstResult = await store.ingest(.pasteboard(red, isPNG: true), screenshotPath: nil)
+        let first = try XCTUnwrap(firstResult)
+        let firstID = try XCTUnwrap(first.entries.first?.id)
+        _ = await store.ingest(.pasteboard(green, isPNG: true), screenshotPath: nil)
+        let retainedResult = await store.ingest(.pasteboard(blue, isPNG: true), screenshotPath: nil)
+        let retained = try XCTUnwrap(retainedResult)
+
+        XCTAssertEqual(retained.entries.count, 2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent(firstID.fileName).path))
+        for entry in retained.entries {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent(entry.id.fileName).path))
+        }
+
+        let cleared = await store.clear()
+
+        XCTAssertTrue(cleared.entries.isEmpty)
+        for entry in retained.entries {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent(entry.id.fileName).path))
+        }
+    }
+
+    func testLoadRemovesOrphansAndManifestItemsWithoutFiles() async throws {
+        let directory = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let orphan = directory.appendingPathComponent("orphan.png")
+        try pngData(color: .systemOrange).write(to: orphan)
+        try manifestData(ids: [String(repeating: "a", count: 64)]).write(
+            to: directory.appendingPathComponent("manifest.json")
+        )
+
+        let snapshot = await ImageStore(directory: directory, maxItems: 10).current()
+
+        XCTAssertTrue(snapshot.entries.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: orphan.path))
+        XCTAssertEqual(try manifestItemCount(in: directory), 0)
+    }
+
+    func testTruncatedManifestLoadsEmptyAndRemovesPNGs() async throws {
+        let directory = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let orphan = directory.appendingPathComponent("orphan.png")
+        try pngData(color: .systemYellow).write(to: orphan)
+        try Data("{\"version\":1,\"items\":[".utf8).write(
+            to: directory.appendingPathComponent("manifest.json")
+        )
+
+        let snapshot = await ImageStore(directory: directory, maxItems: 10).current()
+
+        XCTAssertTrue(snapshot.entries.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: orphan.path))
+        XCTAssertEqual(try manifestItemCount(in: directory), 0)
+    }
+
+    func testMissingManifestLoadsEmptyAndRemovesPNGs() async throws {
+        let directory = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let orphan = directory.appendingPathComponent("orphan.png")
+        try pngData(color: .systemBrown).write(to: orphan)
+
+        let snapshot = await ImageStore(directory: directory, maxItems: 10).current()
+
+        XCTAssertTrue(snapshot.entries.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: orphan.path))
+        XCTAssertEqual(try manifestItemCount(in: directory), 0)
+    }
+
+    private func makeTempDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BarCutStoreTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private func reencode(_ data: Data, as type: UTType) throws -> Data {
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let output = NSMutableData()
+        let destination = try XCTUnwrap(
+            CGImageDestinationCreateWithData(output, type.identifier as CFString, 1, nil)
+        )
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        return output as Data
+    }
+
+    private func manifestData(ids: [String]) throws -> Data {
+        let items = ids.map { ["id": ["hex": $0], "screenshotPath": NSNull()] as [String: Any] }
+        return try JSONSerialization.data(withJSONObject: ["version": 1, "items": items])
+    }
+
+    private func manifestItemCount(in directory: URL) throws -> Int {
+        let data = try Data(contentsOf: directory.appendingPathComponent("manifest.json"))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        return try XCTUnwrap(object["items"] as? [[String: Any]]).count
+    }
+}
+
+private struct TestDirectories {
+    let root: URL
+    let screenshots: URL
+    let store: URL
+}
+
+private func pngData(color: NSColor) throws -> Data {
+    let width = 32
+    let height = 24
+    let colorSpace = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+    let context = try XCTUnwrap(
+        CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+    )
+    context.setFillColor(color.usingColorSpace(.sRGB)?.cgColor ?? color.cgColor)
+    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+    let image = try XCTUnwrap(context.makeImage())
+    let output = NSMutableData()
+    let destination = try XCTUnwrap(
+        CGImageDestinationCreateWithData(output, UTType.png.identifier as CFString, 1, nil)
+    )
+    CGImageDestinationAddImage(destination, image, nil)
+    XCTAssertTrue(CGImageDestinationFinalize(destination))
+    return output as Data
 }
