@@ -8,6 +8,10 @@ let package = Package(
         .executableTarget(
             name: "BarCut",
             path: "Sources/BarCut"
+        ),
+        .testTarget(
+            name: "BarCutTests",
+            dependencies: ["BarCut"]
         )
     ]
 )

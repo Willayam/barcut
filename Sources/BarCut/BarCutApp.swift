@@ -16,14 +16,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private let monitor = ClipboardMonitor()
-    private var interceptor: ScreenshotInterceptor?
     private var editorWindows: [NSWindow] = []
     private var monitorCancellable: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        interceptor = ScreenshotInterceptor(monitor: monitor)
-
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             let image = NSImage(systemSymbolName: "photo.on.rectangle.angled", accessibilityDescription: "BarCut")
             image?.isTemplate = true
