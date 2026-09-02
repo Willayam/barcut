@@ -1,7 +1,28 @@
 import SwiftUI
 
 struct ImageHistoryView: View {
+    static let width: CGFloat = 280
+    static let headerHeight: CGFloat = 43
+    static let rowHeight: CGFloat = 156
+    static let rowSpacing: CGFloat = 8
+    static let listPadding: CGFloat = 8
+    static let emptyStateHeight: CGFloat = 118
+
     @ObservedObject var monitor: ClipboardMonitor
+    let onAnnotate: (ImageHistoryEntry, AnnotationTool) -> Void
+    @State private var loginItemEnabled = LoginItem.isEnabled
+
+    static func preferredContentHeight(for imageCount: Int) -> CGFloat {
+        if imageCount == 0 {
+            return headerHeight + emptyStateHeight
+        }
+
+        let visibleRows = min(imageCount, 3)
+        let listHeight = listPadding * 2
+            + CGFloat(visibleRows) * rowHeight
+            + CGFloat(max(visibleRows - 1, 0)) * rowSpacing
+        return headerHeight + listHeight
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -13,7 +34,10 @@ struct ImageHistoryView: View {
                 imageList
             }
         }
-        .frame(width: 280)
+        .frame(
+            width: Self.width,
+            height: Self.preferredContentHeight(for: monitor.images.count)
+        )
     }
 
     private var header: some View {
@@ -28,15 +52,27 @@ struct ImageHistoryView: View {
                 .buttonStyle(.borderless)
                 .font(.caption)
             }
-            Button("Quit") {
-                NSApplication.shared.terminate(nil)
+            Menu {
+                Toggle("Open at Login", isOn: Binding(
+                    get: { loginItemEnabled },
+                    set: { enabled in
+                        LoginItem.setEnabled(enabled)
+                        loginItemEnabled = LoginItem.isEnabled
+                    }
+                ))
+                Divider()
+                Button("Quit") {
+                    NSApplication.shared.terminate(nil)
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
             }
-            .buttonStyle(.borderless)
-            .font(.caption)
-            .foregroundColor(.secondary)
+            .menuStyle(.borderlessButton)
+            .fixedSize()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .frame(height: Self.headerHeight)
     }
 
     private var emptyState: some View {
@@ -52,43 +88,120 @@ struct ImageHistoryView: View {
                 .foregroundColor(.secondary.opacity(0.7))
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
+        .frame(height: Self.emptyStateHeight)
     }
 
     private var imageList: some View {
         ScrollView {
-            LazyVStack(spacing: 6) {
-                ForEach(Array(monitor.images.enumerated()), id: \.offset) { index, entry in
-                    Button {
-                        monitor.copyAndFlash(entry.image, index: index)
-                    } label: {
-                        ZStack {
-                            Image(nsImage: entry.image)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(maxWidth: .infinity, maxHeight: 80)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                                )
-
-                            if monitor.lastCopiedIndex == index {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(.ultraThinMaterial)
-                                Text("Copied!")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.primary)
-                            }
+            LazyVStack(spacing: Self.rowSpacing) {
+                ForEach(monitor.images) { entry in
+                    ImageHistoryRow(
+                        thumbnail: entry.thumbnail,
+                        isCopied: monitor.lastCopiedID == entry.id,
+                        onCopy: {
+                            monitor.copy(entry)
+                        },
+                        onAnnotate: { tool in
+                            onAnnotate(entry, tool)
                         }
-                    }
-                    .buttonStyle(.plain)
-                    .help("Click to copy to clipboard")
+                    )
                 }
             }
-            .padding(8)
+            .padding(Self.listPadding)
         }
-        .frame(maxHeight: 400)
+        .frame(height: Self.preferredContentHeight(for: monitor.images.count) - Self.headerHeight)
+    }
+}
+
+private struct ImageHistoryRow: View {
+    let thumbnail: CGImage
+    let isCopied: Bool
+    let onCopy: () -> Void
+    let onAnnotate: (AnnotationTool) -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        ZStack {
+            Image(decorative: thumbnail, scale: 1)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: .infinity, minHeight: ImageHistoryView.rowHeight, maxHeight: ImageHistoryView.rowHeight)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.white.opacity(0.22), lineWidth: 0.8)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .onTapGesture(perform: onCopy)
+                .help("Click to copy to clipboard")
+
+            if isCopied {
+                copiedOverlay
+                    .allowsHitTesting(false)
+            }
+
+            if isHovering {
+                hoverToolbar
+                    .transition(.opacity)
+            }
+        }
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) {
+                isHovering = hovering
+            }
+        }
+    }
+
+    private var copiedOverlay: some View {
+        ZStack {
+            Text("Copied!")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(.primary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .liquidGlassRounded(cornerRadius: 8)
+    }
+
+    private var hoverToolbar: some View {
+        HStack(spacing: 4) {
+            toolbarButton(systemName: "doc.on.doc", help: "Copy") {
+                onCopy()
+            }
+
+            toolbarButton(systemName: "textformat", help: "Annotate with text") {
+                onAnnotate(.text)
+            }
+
+            toolbarButton(systemName: "arrow.up.right", help: "Annotate with arrow") {
+                onAnnotate(.arrow)
+            }
+        }
+        .padding(6)
+        .clearLiquidGlassCapsule(interactive: true)
+    }
+
+    private func toolbarButton(
+        systemName: String,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            ZStack {
+                Image(systemName: systemName)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.black.opacity(0.75))
+                    .blur(radius: 1.2)
+
+                Image(systemName: systemName)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .shadow(color: .black.opacity(0.65), radius: 1.6, y: 0.5)
+            .frame(width: 26, height: 26)
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 }

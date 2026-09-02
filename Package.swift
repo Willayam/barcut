@@ -3,11 +3,15 @@ import PackageDescription
 
 let package = Package(
     name: "BarCut",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS("26.0")],
     targets: [
         .executableTarget(
             name: "BarCut",
             path: "Sources/BarCut"
+        ),
+        .testTarget(
+            name: "BarCutTests",
+            dependencies: ["BarCut"]
         )
     ]
 )
