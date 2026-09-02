@@ -1,39 +1,66 @@
 # BarCut
 
-Menu bar history of recent screenshots and clipboard images. Click a thumbnail to copy it again,
-hover for copy, text, and arrow annotation. See CONTEXT.md for the vocabulary the code uses.
+BarCut keeps your latest screenshots and copied images in the macOS menu bar. Open the menu to copy
+an image again or add text and arrow annotations.
 
-## Build and install
+BarCut requires macOS 26 or later on an Apple silicon Mac.
 
+## Install
+
+Download `BarCut.zip` from the latest GitHub release, open it, and move `BarCut.app` to
+`/Applications`. Launch BarCut once. Its image icon will appear in the menu bar.
+
+Release downloads are signed with a Developer ID and notarized by Apple. Until the first release is
+published, developers can build the app from source by following [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Use BarCut
+
+1. Take a screenshot or copy an image.
+2. Select the BarCut icon in the menu bar.
+3. Select a thumbnail to copy it. Use the controls on a thumbnail to add text or an arrow.
+
+Open the menu in the history panel to clear history, enable Open at Login, or quit. BarCut does not
+enable Open at Login unless you turn it on.
+
+If a screenshot does not appear, confirm that macOS saves screenshots to an existing folder. BarCut
+watches the location configured by `com.apple.screencapture`, which is the Desktop by default.
+
+## Privacy
+
+BarCut works locally and makes no network requests. It checks the system pasteboard twice per second,
+but only imports image data. It also watches the macOS screenshot folder while it is running.
+
+The app stores up to ten PNG files and a manifest at:
+
+```text
+~/Library/Application Support/BarCut/History
 ```
-./scripts/build-app.sh --install
+
+Clear History removes those files. Removing `BarCut.app` does not remove saved history.
+
+## Uninstall
+
+Turn off Open at Login from the BarCut menu, then quit the app and move it from `/Applications` to
+the Trash. To delete saved history too, run:
+
+```sh
+rm -rf "$HOME/Library/Application Support/BarCut"
 ```
 
-Builds a release binary, assembles and ad hoc signs `BarCut.app`, copies it to `/Applications`,
-and relaunches. The first launch from `/Applications` or `~/Applications` registers BarCut as a
-login item. The "Open at Login" toggle in the popover's menu turns that off or on later.
+Review the path before running that command.
 
 ## How it works
 
-- Sources. A file watcher on the macOS screenshot destination (`com.apple.screencapture location`,
-  default `~/Desktop`) and a clipboard poll every 0.5 s. Screenshots taken while BarCut is not
-  running are not imported, per the ADR in `docs/adr`.
-- Storage. `~/Library/Application Support/BarCut/History` holds `manifest.json` (order and the
-  source path) plus one PNG per item, ten items, newest first. Writes are atomic and startup drops
-  entries without a file and deletes files without an entry, so a crash at any point converges.
-- Identity. A sha256 over the sRGB pixels, so the same image arriving as a file and as clipboard
-  bytes is one entry.
-- Memory. Only 560 px thumbnails stay resident. The annotation editor reads the full PNG on demand.
-  Copy puts the stored PNG bytes on the pasteboard and promises TIFF for apps that ask.
+- A file watcher observes the macOS screenshot destination. Screenshots created while BarCut is not
+  running are not imported.
+- A SHA-256 fingerprint of sRGB pixels prevents the same image from appearing twice.
+- Only 560-pixel thumbnails stay in memory. The annotation editor loads the full PNG when needed.
+- Storage writes are atomic. BarCut repairs a damaged manifest from the PNG files at the next launch.
+- A process lock prevents more than one BarCut instance from running.
 
-## Verify
+## Contributing
 
-```
-swift test
-./scripts/verify.sh                       # builds the bundle, ingests, kills, restores, evicts
-swift scripts/bench.swift <screenshot.png> # times the image hot paths
-/usr/bin/log show --process BarCut --last 5m --style compact
-```
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup and required checks. Design decisions live in
+[`docs/adr`](docs/adr). Security problems should follow [SECURITY.md](SECURITY.md).
 
-`BARCUT_STORE_DIR`, `BARCUT_SCREENSHOT_DIR`, and `BARCUT_POLL_CLIPBOARD=0` redirect a test
-instance away from the real history, Desktop, and clipboard.
+BarCut is available under the [MIT License](LICENSE).
