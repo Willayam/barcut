@@ -1,10 +1,23 @@
 import Combine
+import Darwin
 import ServiceManagement
 import SwiftUI
 
 @main
 enum BarCutApp {
     static func main() {
+        let storeKey = ProcessInfo.processInfo.environment["BARCUT_STORE_DIR"] ?? "production"
+        let lockName = storeKey.replacingOccurrences(of: "/", with: "_")
+        let lockPath = NSTemporaryDirectory() + "com.williamlarsten.BarCut.\(lockName).lock"
+        let lockDescriptor = open(lockPath, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+        guard lockDescriptor >= 0, flock(lockDescriptor, LOCK_EX | LOCK_NB) == 0 else {
+            NSRunningApplication.runningApplications(withBundleIdentifier: "com.williamlarsten.BarCut")
+                .first?
+                .activate()
+            return
+        }
+        defer { close(lockDescriptor) }
+
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -22,8 +35,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var monitorCancellable: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        LoginItem.autoRegisterIfNeeded()
-
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             let image = NSImage(systemSymbolName: "photo.on.rectangle.angled", accessibilityDescription: "BarCut")
@@ -133,14 +144,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
 @MainActor
 enum LoginItem {
-    private static let decidedKey = "loginItemDecided"
-
     static var isEnabled: Bool {
         SMAppService.mainApp.status == .enabled
     }
 
     static func setEnabled(_ enabled: Bool) {
-        UserDefaults.standard.set(true, forKey: decidedKey)
         do {
             if enabled {
                 try SMAppService.mainApp.register()
@@ -151,25 +159,6 @@ enum LoginItem {
             historyLogger.notice("login item change failed \(error.localizedDescription, privacy: .public)")
         }
         logStatus()
-    }
-
-    static func autoRegisterIfNeeded() {
-        defer { logStatus() }
-        let defaults = UserDefaults.standard
-        // A bundle that has never registered reports .notFound, not .notRegistered.
-        guard defaults.object(forKey: decidedKey) == nil,
-              [.notRegistered, .notFound].contains(SMAppService.mainApp.status) else { return }
-
-        let bundlePath = Bundle.main.bundlePath
-        let userApplications = NSHomeDirectory() + "/Applications/"
-        guard bundlePath.hasPrefix("/Applications/") || bundlePath.hasPrefix(userApplications) else { return }
-
-        do {
-            try SMAppService.mainApp.register()
-            defaults.set(true, forKey: decidedKey)
-        } catch {
-            historyLogger.notice("login item change failed \(error.localizedDescription, privacy: .public)")
-        }
     }
 
     private static func logStatus() {

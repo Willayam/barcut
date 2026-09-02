@@ -7,9 +7,11 @@ swift build -c release 2>&1 | tail -1
 app="BarCut.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/Resources"
 cp Info.plist "$app/Contents/Info.plist"
 cp .build/release/BarCut "$app/Contents/MacOS/BarCut"
-codesign --force --sign - "$app" 2>/dev/null
+cp Assets/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+codesign --force --deep --options runtime --sign "${CODESIGN_IDENTITY:--}" "$app" 2>/dev/null
 echo "built $PWD/$app"
 
 if [ "${1:-}" = "--install" ]; then

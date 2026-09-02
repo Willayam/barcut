@@ -9,6 +9,7 @@ bin="$PWD/BarCut.app/Contents/MacOS/BarCut"
 work="$(mktemp -d /tmp/barcut-verify.XXXXXX)"
 store="$work/store"; shots="$work/shots"; mkdir -p "$store" "$shots"
 sample="${1:-/tmp/barcut-bench/screen.png}"
+mkdir -p "$(dirname "$sample")"
 [ -f "$sample" ] || screencapture -x "$sample"
 
 launch() {
@@ -45,4 +46,6 @@ echo "after 12 more distinct files: pngs on disk $(count_pngs), manifest ids: $(
 echo "footprint after 14 ingests, 10 kept: $(rss_mb "$pid") MB"
 
 kill "$pid" 2>/dev/null || true
-echo "PASS. work dir: $work"
+sleep 0.5
+rm -rf "$work"
+echo "PASS"

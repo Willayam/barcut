@@ -1,0 +1,37 @@
+name: Bug report
+description: Report a reproducible BarCut problem
+body:
+  - type: markdown
+    attributes:
+      value: Do not attach private clipboard contents or screenshots.
+  - type: input
+    id: version
+    attributes:
+      label: BarCut version
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+    validations:
+      required: true
