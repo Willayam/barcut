@@ -9,6 +9,26 @@ private struct PendingScreenshot {
     let firstObservedAt: Date
 }
 
+/// Tells whether a path still names the folder BarCut opened.
+private struct FileIdentity: Equatable {
+    let device: dev_t
+    let inode: ino_t
+
+    init?(path: String) {
+        var info = stat()
+        guard stat(path, &info) == 0 else { return nil }
+        device = info.st_dev
+        inode = info.st_ino
+    }
+
+    init?(descriptor: Int32) {
+        var info = stat()
+        guard fstat(descriptor, &info) == 0 else { return nil }
+        device = info.st_dev
+        inode = info.st_ino
+    }
+}
+
 /// TIFF is encoded only if a consumer asks for it; PNG is already on the pasteboard.
 private final class TIFFPromise: NSObject, NSPasteboardItemDataProvider {
     private let pngData: Data
@@ -31,8 +51,9 @@ final class ClipboardMonitor: ObservableObject {
     @Published private(set) var images: [ImageHistoryEntry] = []
     @Published private(set) var lastCopiedID: ImageID?
 
-    let screenshotDir: String
+    private(set) var screenshotDir: String
 
+    private let screenshotDirOverride: String?
     private let store: ImageStore
     private var appliedRevision = -1
     private var lastChangeCount: Int
@@ -41,6 +62,8 @@ final class ClipboardMonitor: ObservableObject {
     private var pendingScreenshots: [String: PendingScreenshot] = [:]
     private var pendingRetryWorkItem: DispatchWorkItem?
     private var directorySource: DispatchSourceFileSystemObject?
+    private var watchedDirectory: FileIdentity?
+    private var destinationCheckCancellable: AnyCancellable?
     private var tiffPromise: TIFFPromise?
     private let pendingRetryInterval: TimeInterval = 0.25
     private let pendingScreenshotTimeout: TimeInterval = 5.0
@@ -53,10 +76,7 @@ final class ClipboardMonitor: ObservableObject {
         watchScreenshots: Bool = true
     ) {
         let environment = ProcessInfo.processInfo.environment
-        let customScreenshotDir = UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "location")
-        let resolvedScreenshotDir = screenshotDir
-            ?? environment["BARCUT_SCREENSHOT_DIR"]
-            ?? ((customScreenshotDir?.isEmpty == false) ? customScreenshotDir! : NSHomeDirectory() + "/Desktop")
+        screenshotDirOverride = screenshotDir ?? environment["BARCUT_SCREENSHOT_DIR"]
         let defaultStoreDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("BarCut/History", isDirectory: true)
         let resolvedStoreDir = storeDir.map(URL.init(fileURLWithPath:))
@@ -64,7 +84,7 @@ final class ClipboardMonitor: ObservableObject {
             ?? defaultStoreDir
         let shouldPollClipboard = pollClipboard ?? (environment["BARCUT_POLL_CLIPBOARD"] != "0")
 
-        self.screenshotDir = resolvedScreenshotDir
+        self.screenshotDir = Self.resolveScreenshotDir(override: screenshotDirOverride)
         store = ImageStore(directory: resolvedStoreDir, maxItems: maxItems)
         lastChangeCount = NSPasteboard.general.changeCount
 
@@ -80,6 +100,13 @@ final class ClipboardMonitor: ObservableObject {
         }
         if watchScreenshots {
             watchScreenshotFolder()
+            // The destination can move without an event on the old folder, e.g. when the
+            // screenshot location setting changes, so check the path regularly as well.
+            destinationCheckCancellable = Timer.publish(every: 2, tolerance: 1, on: .main, in: .common)
+                .autoconnect()
+                .sink { [weak self] _ in
+                    self?.followScreenshotDestination()
+                }
         }
         Task { [weak self] in
             await self?.refresh()
@@ -159,21 +186,47 @@ final class ClipboardMonitor: ObservableObject {
         }
     }
 
+    /// Re-watches when the screenshot setting changes or the folder at the path is replaced,
+    /// as happens when Desktop & Documents moves to iCloud Drive.
+    private func followScreenshotDestination() {
+        let path = Self.resolveScreenshotDir(override: screenshotDirOverride)
+        let identity = FileIdentity(path: path)
+        guard path != screenshotDir || (identity != nil && identity != watchedDirectory) else { return }
+
+        historyLogger.notice("screenshot destination changed to \(path, privacy: .public)")
+        directorySource?.cancel()
+        directorySource = nil
+        watchedDirectory = nil
+        pendingRetryWorkItem?.cancel()
+        pendingRetryWorkItem = nil
+        pendingScreenshots.removeAll()
+        screenshotDir = path
+        snapshotExistingFiles()
+        watchScreenshotFolder()
+    }
+
     private func watchScreenshotFolder() {
         let descriptor = open(screenshotDir, O_EVTONLY)
         guard descriptor >= 0 else {
             historyLogger.notice("watch failed \(self.screenshotDir, privacy: .public)")
             return
         }
+        watchedDirectory = FileIdentity(descriptor: descriptor)
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: descriptor,
-            eventMask: .write,
+            eventMask: [.write, .rename, .delete, .revoke],
             queue: .main
         )
-        source.setEventHandler { [weak self] in
+        source.setEventHandler { [weak self, weak source] in
+            let event = source?.data ?? []
             Task { @MainActor in
-                await self?.scanScreenshotDestination()
+                guard let self else { return }
+                if event.isDisjoint(with: [.rename, .delete, .revoke]) {
+                    await self.scanScreenshotDestination()
+                } else {
+                    self.followScreenshotDestination()
+                }
             }
         }
         source.setCancelHandler {
@@ -227,6 +280,16 @@ final class ClipboardMonitor: ObservableObject {
             options: .skipsHiddenFiles
         ) else { return }
         knownFiles = Set(contents.filter(isImageFile).map(\.path))
+    }
+
+    private static func resolveScreenshotDir(override: String?) -> String {
+        if let override { return override }
+        let domain = "com.apple.screencapture" as CFString
+        CFPreferencesAppSynchronize(domain)
+        if let location = CFPreferencesCopyAppValue("location" as CFString, domain) as? String, !location.isEmpty {
+            return (location as NSString).expandingTildeInPath
+        }
+        return NSHomeDirectory() + "/Desktop"
     }
 
     private func isImageFile(_ url: URL) -> Bool {
