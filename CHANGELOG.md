@@ -6,6 +6,7 @@ This project follows semantic versioning. Release dates use ISO 8601 format.
 
 - Fixed screenshots going missing after the screenshot folder moves, such as when Desktop & Documents
   moves to iCloud Drive or the macOS screenshot location changes.
+- Made the history panel open and close without animation, so it appears about 200 ms sooner.
 
 ## 1.0.0
 
