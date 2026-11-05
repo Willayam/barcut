@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         popover = NSPopover()
         popover.contentSize = NSSize(width: 280, height: ImageHistoryView.preferredContentHeight(for: monitor.images.count))
         popover.behavior = .transient
+        popover.animates = false
         popover.contentViewController = NSHostingController(
             rootView: ImageHistoryView(monitor: monitor) { [weak self] entry, tool in
                 Task { @MainActor in
