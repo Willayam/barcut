@@ -11,6 +11,7 @@ struct ImageHistoryView: View {
     @ObservedObject var monitor: ClipboardMonitor
     @ObservedObject var panel: HistoryPanel
     let onAnnotate: (ImageHistoryEntry, AnnotationTool) -> Void
+    let onClear: () -> Void
     @State private var loginItemEnabled = LoginItem.isEnabled
 
     static func preferredContentHeight(for imageCount: Int) -> CGFloat {
@@ -46,13 +47,6 @@ struct ImageHistoryView: View {
             Text("BarCut")
                 .font(.headline)
             Spacer()
-            if !monitor.images.isEmpty {
-                Button("Clear") {
-                    monitor.clearHistory()
-                }
-                .buttonStyle(.borderless)
-                .font(.caption)
-            }
             Menu {
                 Toggle("Open at Login", isOn: Binding(
                     get: { loginItemEnabled },
@@ -62,6 +56,9 @@ struct ImageHistoryView: View {
                     }
                 ))
                 Toggle("Open with \(GlobalHotKey.openHistoryLabel)", isOn: $panel.shortcutEnabled)
+                Divider()
+                Button("Clear History…", role: .destructive, action: onClear)
+                    .disabled(monitor.images.isEmpty)
                 Divider()
                 Button("Quit") {
                     NSApplication.shared.terminate(nil)

@@ -26,7 +26,8 @@ right away.
 Control-click a thumbnail to remove that one image from history.
 
 Open the menu in the history panel to clear history, enable Open at Login, turn the ⇧⌘2 shortcut
-off, or quit. BarCut does not enable Open at Login unless you turn it on.
+off, or quit. Clear History asks before it deletes anything. BarCut does not enable Open at Login
+unless you turn it on.
 
 If a screenshot does not appear, confirm that macOS saves screenshots to an existing folder. BarCut
 watches the location configured by `com.apple.screencapture`, which is the Desktop by default.
