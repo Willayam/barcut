@@ -92,27 +92,37 @@ struct ImageHistoryView: View {
     }
 
     private var imageList: some View {
-        ScrollView {
-            LazyVStack(spacing: Self.rowSpacing) {
-                ForEach(monitor.images) { entry in
-                    ImageHistoryRow(
-                        thumbnail: entry.thumbnail,
-                        isCopied: monitor.lastCopiedID == entry.id,
-                        onCopy: {
-                            monitor.copy(entry)
-                        },
-                        onAnnotate: { tool in
-                            onAnnotate(entry, tool)
-                        }
-                    )
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: Self.rowSpacing) {
+                    ForEach(monitor.images) { entry in
+                        ImageHistoryRow(
+                            thumbnail: entry.thumbnail,
+                            isCopied: monitor.lastCopiedID == entry.id,
+                            onCopy: {
+                                monitor.copy(entry)
+                            },
+                            onAnnotate: { tool in
+                                onAnnotate(entry, tool)
+                            }
+                        )
+                        .id(entry.id)
+                    }
+                }
+                .padding(Self.listPadding)
+            }
+            // The newest image is the one the user opens the popover for, so each open starts there.
+            .onReceive(NotificationCenter.default.publisher(for: NSPopover.willShowNotification)) { _ in
+                if let newest = monitor.images.first {
+                    proxy.scrollTo(newest.id, anchor: .top)
                 }
             }
-            .padding(Self.listPadding)
         }
         .frame(height: Self.preferredContentHeight(for: monitor.images.count) - Self.headerHeight)
     }
 }
 
+/// The whole row copies. Annotation sits in a corner so a near miss still copies.
 private struct ImageHistoryRow: View {
     let thumbnail: CGImage
     let isCopied: Bool
@@ -121,28 +131,34 @@ private struct ImageHistoryRow: View {
 
     @State private var isHovering = false
 
+    private static let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+
     var body: some View {
-        ZStack {
+        Button(action: onCopy) {
             Image(decorative: thumbnail, scale: 1)
                 .resizable()
-                .aspectRatio(contentMode: .fit)
+                .aspectRatio(contentMode: fillsCard ? .fill : .fit)
                 .frame(maxWidth: .infinity, minHeight: ImageHistoryView.rowHeight, maxHeight: ImageHistoryView.rowHeight)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(Color.primary.opacity(0.06))
+                .overlay(Color.black.opacity(isActive ? 0.14 : 0))
+                .overlay {
+                    if isActive {
+                        copyBadge
+                            .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                    }
+                }
+                .clipShape(Self.shape)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(Color.white.opacity(0.22), lineWidth: 0.8)
+                    Self.shape.stroke(Color.white.opacity(isHovering ? 0.5 : 0.22), lineWidth: 0.8)
                 )
-                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .onTapGesture(perform: onCopy)
-                .help("Click to copy to clipboard")
-
-            if isCopied {
-                copiedOverlay
-                    .allowsHitTesting(false)
-            }
-
+                .contentShape(Self.shape)
+        }
+        .buttonStyle(RowButtonStyle())
+        .accessibilityLabel("Copy image")
+        .overlay(alignment: .topTrailing) {
             if isHovering {
-                hoverToolbar
+                annotateButtons
+                    .padding(6)
                     .transition(.opacity)
             }
         }
@@ -151,57 +167,67 @@ private struct ImageHistoryRow: View {
                 isHovering = hovering
             }
         }
-    }
-
-    private var copiedOverlay: some View {
-        ZStack {
-            Text("Copied!")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(.primary)
+        // The popover can close with the pointer still inside, and no exit event follows.
+        .onReceive(NotificationCenter.default.publisher(for: NSPopover.didCloseNotification)) { _ in
+            isHovering = false
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .liquidGlassRounded(cornerRadius: 8)
+        .animation(.easeOut(duration: 0.12), value: isCopied)
     }
 
-    private var hoverToolbar: some View {
-        HStack(spacing: 4) {
-            toolbarButton(systemName: "doc.on.doc", help: "Copy") {
-                onCopy()
-            }
+    private var isActive: Bool {
+        isHovering || isCopied
+    }
 
-            toolbarButton(systemName: "textformat", help: "Annotate with text") {
-                onAnnotate(.text)
-            }
+    /// A thumbnail close to the card's proportions fills it, which crops a sliver instead of leaving thin bars.
+    private var fillsCard: Bool {
+        let card = (ImageHistoryView.width - 2 * ImageHistoryView.listPadding) / ImageHistoryView.rowHeight
+        let image = CGFloat(thumbnail.width) / CGFloat(max(thumbnail.height, 1))
+        return max(card / image, image / card) < 1.12
+    }
 
-            toolbarButton(systemName: "arrow.up.right", help: "Annotate with arrow") {
-                onAnnotate(.arrow)
-            }
+    private var copyBadge: some View {
+        HStack(spacing: 6) {
+            Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
+                .font(.system(size: 13, weight: .semibold))
+                .contentTransition(.symbolEffect(.replace))
+            Text(isCopied ? "Copied" : "Copy")
+                .font(.system(size: 13, weight: .semibold))
         }
-        .padding(6)
-        .clearLiquidGlassCapsule(interactive: true)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .darkLiquidGlassCapsule()
     }
 
-    private func toolbarButton(
-        systemName: String,
-        help: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            ZStack {
-                Image(systemName: systemName)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.black.opacity(0.75))
-                    .blur(radius: 1.2)
+    private var annotateButtons: some View {
+        HStack(spacing: 2) {
+            annotateButton(systemName: "textformat", help: "Annotate with text", tool: .text)
+            annotateButton(systemName: "arrow.up.right", help: "Annotate with arrow", tool: .arrow)
+        }
+        .padding(2)
+        .darkLiquidGlassCapsule()
+    }
 
-                Image(systemName: systemName)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-            .shadow(color: .black.opacity(0.65), radius: 1.6, y: 0.5)
-            .frame(width: 26, height: 26)
+    private func annotateButton(systemName: String, help: String, tool: AnnotationTool) -> some View {
+        Button {
+            onAnnotate(tool)
+        } label: {
+            Image(systemName: systemName)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .help(help)
+        .accessibilityLabel(help)
+    }
+}
+
+private struct RowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
