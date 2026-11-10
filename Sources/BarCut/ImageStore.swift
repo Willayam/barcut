@@ -117,6 +117,13 @@ actor ImageStore {
         return commit(previousIDs: previousIDs)
     }
 
+    func remove(_ id: ImageID) -> Snapshot {
+        ensureLoaded()
+        let previousIDs = Set(items.map(\.id))
+        items.removeAll { $0.id == id }
+        return commit(previousIDs: previousIDs)
+    }
+
     func pngData(for id: ImageID) -> Data? {
         ensureLoaded()
         if let data = volatilePNGData[id] {

@@ -186,6 +186,13 @@ final class ClipboardMonitor: ObservableObject {
         }
     }
 
+    func remove(_ entry: ImageHistoryEntry) {
+        Task { [weak self] in
+            guard let self else { return }
+            self.apply(await self.store.remove(entry.id))
+        }
+    }
+
     /// Re-watches when the screenshot setting changes or the folder at the path is replaced,
     /// as happens when Desktop & Documents moves to iCloud Drive.
     private func followScreenshotDestination() {

@@ -58,12 +58,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         popover = NSPopover()
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(
-            rootView: ImageHistoryView(monitor: monitor, panel: panel) { [weak self] entry, tool in
-                Task { @MainActor in
-                    guard let self, let image = await self.monitor.fullImage(for: entry) else { return }
-                    self.openAnnotationEditor(image: image, initialTool: tool)
+            rootView: ImageHistoryView(
+                monitor: monitor,
+                panel: panel,
+                onAnnotate: { [weak self] entry, tool in
+                    Task { @MainActor in
+                        guard let self, let image = await self.monitor.fullImage(for: entry) else { return }
+                        self.openAnnotationEditor(image: image, initialTool: tool)
+                    }
+                },
+                onClear: { [weak self] in
+                    self?.confirmClearHistory()
                 }
-            }
+            )
         )
 
         monitor.$images
@@ -152,6 +159,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let app = previousApp, NSApplication.shared.isActive else { return }
         previousApp = nil
         app.activate(from: .current, options: [])
+    }
+
+    /// Clearing deletes every stored image and cannot be undone, so it asks first.
+    private func confirmClearHistory() {
+        let count = monitor.images.count
+        let returnTo = previousApp
+        popover.close()
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = count == 1 ? "Clear the image from history?" : "Clear all \(count) images from history?"
+        alert.informativeText = "BarCut deletes its saved copies. You can't undo this. Files in your screenshot folder stay where they are."
+        let clear = alert.addButton(withTitle: "Clear History")
+        clear.hasDestructiveAction = true
+        // Return must not clear, so only Escape and a click have an effect.
+        clear.keyEquivalent = ""
+        alert.addButton(withTitle: "Cancel")
+
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            monitor.clearHistory()
+        }
+        returnTo?.activate(from: .current, options: [])
     }
 
     private func handlePopoverKey(_ event: NSEvent) -> Bool {

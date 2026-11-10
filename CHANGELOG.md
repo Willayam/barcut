@@ -10,6 +10,8 @@ This project follows semantic versioning. Release dates use ISO 8601 format.
   near miss still copies.
 - The menu closes after a copy and opens at the newest image.
 - Added the ⇧⌘2 shortcut, which opens the history. The arrow keys and Return copy without the mouse.
+- Added removing a single image from history.
+- Moved Clear into the history menu as Clear History, which now asks for confirmation.
 
 ## 1.0.0
 

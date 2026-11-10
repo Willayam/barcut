@@ -11,6 +11,7 @@ struct ImageHistoryView: View {
     @ObservedObject var monitor: ClipboardMonitor
     @ObservedObject var panel: HistoryPanel
     let onAnnotate: (ImageHistoryEntry, AnnotationTool) -> Void
+    let onClear: () -> Void
     @State private var loginItemEnabled = LoginItem.isEnabled
 
     static func preferredContentHeight(for imageCount: Int) -> CGFloat {
@@ -46,13 +47,6 @@ struct ImageHistoryView: View {
             Text("BarCut")
                 .font(.headline)
             Spacer()
-            if !monitor.images.isEmpty {
-                Button("Clear") {
-                    monitor.clearHistory()
-                }
-                .buttonStyle(.borderless)
-                .font(.caption)
-            }
             Menu {
                 Toggle("Open at Login", isOn: Binding(
                     get: { loginItemEnabled },
@@ -62,6 +56,9 @@ struct ImageHistoryView: View {
                     }
                 ))
                 Toggle("Open with \(GlobalHotKey.openHistoryLabel)", isOn: $panel.shortcutEnabled)
+                Divider()
+                Button("Clear History…", role: .destructive, action: onClear)
+                    .disabled(monitor.images.isEmpty)
                 Divider()
                 Button("Quit") {
                     NSApplication.shared.terminate(nil)
@@ -107,6 +104,9 @@ struct ImageHistoryView: View {
                             },
                             onAnnotate: { tool in
                                 onAnnotate(entry, tool)
+                            },
+                            onRemove: {
+                                monitor.remove(entry)
                             }
                         )
                         .id(entry.id)
@@ -149,6 +149,7 @@ private struct ImageHistoryRow: View {
     let isSelected: Bool
     let onCopy: () -> Void
     let onAnnotate: (AnnotationTool) -> Void
+    let onRemove: () -> Void
 
     @State private var isHovering = false
 
@@ -178,7 +179,15 @@ private struct ImageHistoryRow: View {
                 .contentShape(Self.shape)
         }
         .buttonStyle(RowButtonStyle())
+        .contextMenu {
+            Button("Copy", action: onCopy)
+            Button("Annotate with Text") { onAnnotate(.text) }
+            Button("Annotate with Arrow") { onAnnotate(.arrow) }
+            Divider()
+            Button("Remove from History", role: .destructive, action: onRemove)
+        }
         .accessibilityLabel("Copy image")
+        .accessibilityAction(named: "Remove from History", onRemove)
         .overlay(alignment: .topTrailing) {
             if isHovering {
                 annotateButtons
