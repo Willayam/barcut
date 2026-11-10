@@ -5,16 +5,13 @@ extension View {
         modifier(LiquidGlassModifier(glass: .regular, shape: Capsule(), interactive: interactive))
     }
 
-    func clearLiquidGlassCapsule(interactive: Bool = false) -> some View {
-        modifier(LiquidGlassModifier(glass: .clear, shape: Capsule(), interactive: interactive))
+    /// Keeps white labels readable over any thumbnail, light or dark.
+    func darkLiquidGlassCapsule() -> some View {
+        modifier(LiquidGlassModifier(glass: .regular.tint(.black.opacity(0.45)), shape: Capsule(), interactive: false))
     }
 
     func liquidGlassCircle(interactive: Bool = false) -> some View {
         modifier(LiquidGlassModifier(glass: .regular, shape: Circle(), interactive: interactive))
-    }
-
-    func liquidGlassRounded(cornerRadius: CGFloat, interactive: Bool = false) -> some View {
-        modifier(LiquidGlassModifier(glass: .regular, shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous), interactive: interactive))
     }
 }
 

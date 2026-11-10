@@ -32,7 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var popover: NSPopover!
     private let monitor = ClipboardMonitor()
     private var editorWindows: [NSWindow] = []
-    private var monitorCancellable: AnyCancellable?
+    private var cancellables: Set<AnyCancellable> = []
+    /// The app in front when the popover opened. A click in the popover makes BarCut the
+    /// active app, so this one gets the keyboard back afterwards.
+    private var previousApp: NSRunningApplication?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -47,7 +50,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 280, height: ImageHistoryView.preferredContentHeight(for: monitor.images.count))
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(
             rootView: ImageHistoryView(monitor: monitor) { [weak self] entry, tool in
@@ -58,24 +60,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
         )
 
-        monitorCancellable = monitor.$images.sink { [weak self] images in
-            self?.popover.contentSize = NSSize(
-                width: ImageHistoryView.width,
-                height: ImageHistoryView.preferredContentHeight(for: images.count)
-            )
-        }
+        monitor.$images
+            .sink { [weak self] images in
+                self?.popover.contentSize = NSSize(
+                    width: ImageHistoryView.width,
+                    height: ImageHistoryView.preferredContentHeight(for: images.count)
+                )
+            }
+            .store(in: &cancellables)
+
+        // Copying is the last step in the popover. The keyboard goes back at once, so ⌘V right
+        // after the copy reaches the app the user came from. The popover leaves once "Copied" has
+        // shown, and a transient popover would close the moment BarCut stops being active.
+        let copied = monitor.$lastCopiedID
+            .filter { [weak self] id in id != nil && self?.popover.isShown == true }
+        copied
+            .sink { [weak self] _ in
+                self?.popover.behavior = .applicationDefined
+                self?.returnKeyboard()
+            }
+            .store(in: &cancellables)
+        copied
+            .delay(for: .seconds(0.6), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.popover.close()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: NSPopover.didCloseNotification, object: popover)
+            .sink { [weak self] _ in
+                self?.popover.behavior = .transient
+                self?.previousApp = nil
+            }
+            .store(in: &cancellables)
     }
 
     @objc private func togglePopover() {
-        guard let button = statusItem.button else { return }
-
         if popover.isShown {
+            returnKeyboard()
             popover.performClose(nil)
         } else {
-            popover.contentSize = NSSize(width: 280, height: ImageHistoryView.preferredContentHeight(for: monitor.images.count))
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
+            showPopover()
         }
+    }
+
+    private func showPopover() {
+        guard let button = statusItem.button else { return }
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        previousApp = frontmost == .current ? nil : frontmost
+        popover.contentSize = NSSize(
+            width: ImageHistoryView.width,
+            height: ImageHistoryView.preferredContentHeight(for: monitor.images.count)
+        )
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover.contentViewController?.view.window?.makeKey()
+    }
+
+    private func returnKeyboard() {
+        guard let app = previousApp, NSApplication.shared.isActive else { return }
+        previousApp = nil
+        app.activate(from: .current, options: [])
     }
 
     private func openAnnotationEditor(image: NSImage, initialTool: AnnotationTool) {
