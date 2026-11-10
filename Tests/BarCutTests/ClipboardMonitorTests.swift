@@ -153,6 +153,25 @@ final class ImageStoreTests: XCTestCase {
         }
     }
 
+    func testRemoveDeletesOnePNGFileAndStaysRemovedAfterRelaunch() async throws {
+        let directory = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ImageStore(directory: directory, maxItems: 10)
+        let redResult = await store.ingest(.pasteboard(try pngData(color: .systemRed), isPNG: true), screenshotPath: nil)
+        let redID = try XCTUnwrap(redResult?.entries.first?.id)
+        let greenResult = await store.ingest(.pasteboard(try pngData(color: .systemGreen), isPNG: true), screenshotPath: nil)
+        let greenID = try XCTUnwrap(greenResult?.entries.first?.id)
+
+        let remaining = await store.remove(redID)
+
+        XCTAssertEqual(remaining.entries.map(\.id), [greenID])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent(redID.fileName).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent(greenID.fileName).path))
+
+        let relaunched = await ImageStore(directory: directory, maxItems: 10).current()
+        XCTAssertEqual(relaunched.entries.map(\.id), [greenID])
+    }
+
     func testLoadRemovesOrphansAndManifestItemsWithoutFiles() async throws {
         let directory = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

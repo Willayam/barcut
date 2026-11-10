@@ -23,6 +23,8 @@ Press ⇧⌘2 to open the history from the keyboard. The arrow keys choose an im
 and Escape closes the history. The keyboard then goes back to the app you were in, so you can paste
 right away.
 
+Control-click a thumbnail to remove that one image from history.
+
 Open the menu in the history panel to clear history, enable Open at Login, turn the ⇧⌘2 shortcut
 off, or quit. BarCut does not enable Open at Login unless you turn it on.
 

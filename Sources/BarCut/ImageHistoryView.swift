@@ -107,6 +107,9 @@ struct ImageHistoryView: View {
                             },
                             onAnnotate: { tool in
                                 onAnnotate(entry, tool)
+                            },
+                            onRemove: {
+                                monitor.remove(entry)
                             }
                         )
                         .id(entry.id)
@@ -149,6 +152,7 @@ private struct ImageHistoryRow: View {
     let isSelected: Bool
     let onCopy: () -> Void
     let onAnnotate: (AnnotationTool) -> Void
+    let onRemove: () -> Void
 
     @State private var isHovering = false
 
@@ -178,7 +182,15 @@ private struct ImageHistoryRow: View {
                 .contentShape(Self.shape)
         }
         .buttonStyle(RowButtonStyle())
+        .contextMenu {
+            Button("Copy", action: onCopy)
+            Button("Annotate with Text") { onAnnotate(.text) }
+            Button("Annotate with Arrow") { onAnnotate(.arrow) }
+            Divider()
+            Button("Remove from History", role: .destructive, action: onRemove)
+        }
         .accessibilityLabel("Copy image")
+        .accessibilityAction(named: "Remove from History", onRemove)
         .overlay(alignment: .topTrailing) {
             if isHovering {
                 annotateButtons
