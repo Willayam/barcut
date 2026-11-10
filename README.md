@@ -19,8 +19,12 @@ published, developers can build the app from source by following [CONTRIBUTING.m
 2. Select the BarCut icon in the menu bar.
 3. Select a thumbnail to copy it. Use the controls on a thumbnail to add text or an arrow.
 
-Open the menu in the history panel to clear history, enable Open at Login, or quit. BarCut does not
-enable Open at Login unless you turn it on.
+Press ⇧⌘2 to open the history from the keyboard. The arrow keys choose an image, Return copies it,
+and Escape closes the history. The keyboard then goes back to the app you were in, so you can paste
+right away.
+
+Open the menu in the history panel to clear history, enable Open at Login, turn the ⇧⌘2 shortcut
+off, or quit. BarCut does not enable Open at Login unless you turn it on.
 
 If a screenshot does not appear, confirm that macOS saves screenshots to an existing folder. BarCut
 watches the location configured by `com.apple.screencapture`, which is the Desktop by default.
