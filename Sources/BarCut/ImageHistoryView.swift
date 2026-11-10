@@ -9,6 +9,7 @@ struct ImageHistoryView: View {
     static let emptyStateHeight: CGFloat = 118
 
     @ObservedObject var monitor: ClipboardMonitor
+    @ObservedObject var panel: HistoryPanel
     let onAnnotate: (ImageHistoryEntry, AnnotationTool) -> Void
     @State private var loginItemEnabled = LoginItem.isEnabled
 
@@ -60,6 +61,7 @@ struct ImageHistoryView: View {
                         loginItemEnabled = LoginItem.isEnabled
                     }
                 ))
+                Toggle("Open with \(GlobalHotKey.openHistoryLabel)", isOn: $panel.shortcutEnabled)
                 Divider()
                 Button("Quit") {
                     NSApplication.shared.terminate(nil)
@@ -99,6 +101,7 @@ struct ImageHistoryView: View {
                         ImageHistoryRow(
                             thumbnail: entry.thumbnail,
                             isCopied: monitor.lastCopiedID == entry.id,
+                            isSelected: panel.selectedID == entry.id,
                             onCopy: {
                                 monitor.copy(entry)
                             },
@@ -117,8 +120,25 @@ struct ImageHistoryView: View {
                     proxy.scrollTo(newest.id, anchor: .top)
                 }
             }
+            .onChange(of: panel.selectedID) { _, selected in
+                if let selected {
+                    proxy.scrollTo(selected)
+                }
+            }
         }
         .frame(height: Self.preferredContentHeight(for: monitor.images.count) - Self.headerHeight)
+    }
+}
+
+/// What the popover shows beyond the images: the keyboard selection and the shortcut setting.
+@MainActor
+final class HistoryPanel: ObservableObject {
+    /// Set only while the popover is driven from the keyboard.
+    @Published var selectedID: ImageID?
+    @Published var shortcutEnabled: Bool
+
+    init(shortcutEnabled: Bool) {
+        self.shortcutEnabled = shortcutEnabled
     }
 }
 
@@ -126,6 +146,7 @@ struct ImageHistoryView: View {
 private struct ImageHistoryRow: View {
     let thumbnail: CGImage
     let isCopied: Bool
+    let isSelected: Bool
     let onCopy: () -> Void
     let onAnnotate: (AnnotationTool) -> Void
 
@@ -149,7 +170,10 @@ private struct ImageHistoryRow: View {
                 }
                 .clipShape(Self.shape)
                 .overlay(
-                    Self.shape.stroke(Color.white.opacity(isHovering ? 0.5 : 0.22), lineWidth: 0.8)
+                    Self.shape.stroke(
+                        isSelected ? Color.accentColor : Color.white.opacity(isHovering ? 0.5 : 0.22),
+                        lineWidth: isSelected ? 2.5 : 0.8
+                    )
                 )
                 .contentShape(Self.shape)
         }
@@ -172,10 +196,11 @@ private struct ImageHistoryRow: View {
             isHovering = false
         }
         .animation(.easeOut(duration: 0.12), value: isCopied)
+        .animation(.easeOut(duration: 0.12), value: isSelected)
     }
 
     private var isActive: Bool {
-        isHovering || isCopied
+        isHovering || isCopied || isSelected
     }
 
     /// A thumbnail close to the card's proportions fills it, which crops a sliver instead of leaving thin bars.
@@ -187,7 +212,7 @@ private struct ImageHistoryRow: View {
 
     private var copyBadge: some View {
         HStack(spacing: 6) {
-            Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
+            Image(systemName: isCopied ? "checkmark" : isSelected && !isHovering ? "return" : "doc.on.doc")
                 .font(.system(size: 13, weight: .semibold))
                 .contentTransition(.symbolEffect(.replace))
             Text(isCopied ? "Copied" : "Copy")

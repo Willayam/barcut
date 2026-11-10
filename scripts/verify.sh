@@ -13,7 +13,7 @@ mkdir -p "$(dirname "$sample")"
 [ -f "$sample" ] || screencapture -x "$sample"
 
 launch() {
-    BARCUT_STORE_DIR="$store" BARCUT_SCREENSHOT_DIR="$shots" BARCUT_POLL_CLIPBOARD=0 "$bin" >"$work/app-$1.log" 2>&1 &
+    BARCUT_STORE_DIR="$store" BARCUT_SCREENSHOT_DIR="$shots" BARCUT_POLL_CLIPBOARD=0 BARCUT_SHORTCUT=0 "$bin" >"$work/app-$1.log" 2>&1 &
     echo $!
 }
 rss_mb() { footprint -p "$1" 2>/dev/null | awk '/phys_footprint:/ { print $2; exit }'; }

@@ -9,6 +9,7 @@ This project follows semantic versioning. Release dates use ISO 8601 format.
 - Made the whole thumbnail the copy target and moved the annotation controls to its corner, so a
   near miss still copies.
 - The menu closes after a copy and opens at the newest image.
+- Added the ⇧⌘2 shortcut, which opens the history. The arrow keys and Return copy without the mouse.
 
 ## 1.0.0
 
