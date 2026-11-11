@@ -20,6 +20,7 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
+          if [ -z "$APPLE_CERTIFICATE_P12" ]; then echo "No Developer ID certificate. Signing ad hoc."; exit 0; fi
           echo "$APPLE_CERTIFICATE_P12" | base64 -D > certificate.p12
           security create-keychain -p "$KEYCHAIN_PASSWORD" release.keychain-db
           security set-keychain-settings -lut 21600 release.keychain-db
@@ -31,15 +32,19 @@ jobs:
         env:
           CODESIGN_IDENTITY: ${{ secrets.CODESIGN_IDENTITY }}
         run: ./scripts/build-app.sh
-      - name: Notarize and package
+      - name: Notarize if configured, then package
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
-          ditto -c -k --keepParent BarCut.app BarCut-notarize.zip
-          xcrun notarytool submit BarCut-notarize.zip --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
-          xcrun stapler staple BarCut.app
+          if [ -n "$APPLE_ID" ]; then
+            ditto -c -k --keepParent BarCut.app BarCut-notarize.zip
+            xcrun notarytool submit BarCut-notarize.zip --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+            xcrun stapler staple BarCut.app
+          else
+            echo "No Apple ID. Skipping notarization."
+          fi
           mkdir release
           ditto -c -k --keepParent BarCut.app release/BarCut.zip
           shasum -a 256 release/BarCut.zip > release/BarCut.zip.sha256
