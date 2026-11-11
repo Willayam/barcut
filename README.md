@@ -3,15 +3,36 @@
 BarCut keeps your latest screenshots and copied images in the macOS menu bar. Open the menu to copy
 an image again or add text and arrow annotations.
 
-BarCut requires macOS 26 or later on an Apple silicon Mac.
+BarCut requires macOS 26 or later on an Apple silicon Mac (M1 or later).
 
 ## Install
 
-Download `BarCut.zip` from the latest GitHub release, open it, and move `BarCut.app` to
-`/Applications`. Launch BarCut once. Its image icon will appear in the menu bar.
+1. Open Terminal. Press ⌘Space, type `Terminal`, and press Return.
+2. Copy this line, paste it into Terminal, and press Return:
 
-Release downloads are signed with a Developer ID and notarized by Apple. Until the first release is
-published, developers can build the app from source by following [CONTRIBUTING.md](CONTRIBUTING.md).
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/Willayam/barcut/main/install.sh | bash
+   ```
+
+3. If macOS asks whether BarCut can access files in your Desktop folder, click Allow. BarCut needs
+   this to see new screenshots.
+
+The BarCut icon appears in the menu bar at the top right of the screen. You can close Terminal.
+
+To update BarCut, run the same line again. The script downloads the latest release, quits BarCut if
+it is running, puts `BarCut.app` in `/Applications`, and opens it. If your account cannot write to
+`/Applications`, it uses `~/Applications` instead. Read [install.sh](install.sh) to see every step.
+
+### Install without Terminal
+
+1. Download `BarCut.zip` from the [latest release](https://github.com/Willayam/barcut/releases/latest).
+2. Open the zip file and drag `BarCut.app` into your Applications folder.
+3. Open BarCut. Apple has not notarized BarCut, so macOS says it cannot verify the app. Click Done.
+4. Open System Settings, select Privacy & Security, and scroll to the bottom. Click Open Anyway
+   next to the message about BarCut, then confirm.
+
+You only need to do steps 3 and 4 once. Developers can build the app from source by following
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Use BarCut
 

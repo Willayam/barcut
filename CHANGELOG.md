@@ -2,8 +2,9 @@
 
 This project follows semantic versioning. Release dates use ISO 8601 format.
 
-## Unreleased
+## 1.1.0 - 2026-11-11
 
+- Added a one-line installer. Paste it into Terminal to install or update BarCut.
 - Fixed screenshots going missing after the screenshot folder moves, such as when Desktop & Documents
   moves to iCloud Drive or the macOS screenshot location changes.
 - Made the whole thumbnail the copy target and moved the annotation controls to its corner, so a
