@@ -2,6 +2,11 @@
 
 This project follows semantic versioning. Release dates use ISO 8601 format.
 
+## Unreleased
+
+- ⇧⌘2 now copies the newest image at once, like ⌘Tab. Keep ⇧⌘ held and press 2 or the arrow keys to
+  pick an older image, then let go to copy it.
+
 ## 1.1.0 - 2026-11-11
 
 - Added a one-line installer. Paste it into Terminal to install or update BarCut.
