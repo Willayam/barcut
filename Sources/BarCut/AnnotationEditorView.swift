@@ -2,222 +2,190 @@ import AppKit
 import SwiftUI
 
 struct AnnotationEditorView: View {
-    let onPreviewChanged: (NSImage) -> Void
-    let onComplete: (NSImage) -> Void
-    let onCancel: () -> Void
-
-    @State private var document: AnnotationDocument
-    @State private var tool: AnnotationTool
-    @State private var textPublishWorkItem: DispatchWorkItem?
-    @FocusState private var focusedTextID: UUID?
+    @StateObject private var editor: AnnotationEditor
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
-        image: NSImage,
-        initialTool: AnnotationTool,
-        onPreviewChanged: @escaping (NSImage) -> Void,
-        onComplete: @escaping (NSImage) -> Void,
-        onCancel: @escaping () -> Void
+        image: NSImage, initialTool: AnnotationTool, onPreviewChanged: @escaping (NSImage) -> Void,
+        onComplete: @escaping (NSImage) -> Void, onCancel: @escaping () -> Void
     ) {
-        self.onPreviewChanged = onPreviewChanged
-        self.onComplete = onComplete
-        self.onCancel = onCancel
-        _document = State(initialValue: AnnotationDocument(baseImage: image))
-        _tool = State(initialValue: initialTool)
+        _editor = StateObject(
+            wrappedValue: AnnotationEditor(
+                image: image, tool: initialTool, onPreviewChanged: onPreviewChanged, onComplete: onComplete,
+                onCancel: onCancel))
     }
-
     var body: some View {
         GeometryReader { proxy in
-            let projection = document.projection(in: proxy.size)
-            let rect = projection.imageRect
-
             ZStack(alignment: .topLeading) {
                 Color(nsColor: .windowBackgroundColor)
-
-                Image(nsImage: document.baseImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: rect.width, height: rect.height)
-                    .position(x: rect.midX, y: rect.midY)
-                    .shadow(color: .black.opacity(0.18), radius: 14, y: 5)
-
-                annotationLayer(using: projection)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                toolbar
-                    .position(x: rect.maxX - 96, y: rect.maxY - 28)
+                AnnotationViewport(editor: editor, region: editor.region)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: editor.region)
+                AnnotationToolbar(editor: editor)
+                    .frame(maxWidth: .infinity)
+                    .position(x: proxy.size.width / 2, y: proxy.size.height - AnnotationLayout.toolbarBand / 2)
             }
         }
         .frame(minWidth: 640, minHeight: 420)
+        .onDisappear { editor.publishWork?.cancel() }
     }
+}
 
-    private var toolbar: some View {
-        HStack(spacing: 6) {
-            editorButton(systemName: "checkmark", help: "Done") {
-                textPublishWorkItem?.cancel()
-                onComplete(document.render())
-            }
-
-            editorButton(systemName: "textformat", help: "Text", isActive: tool == .text) {
-                tool = .text
-            }
-
-            editorButton(systemName: "arrow.up.right", help: "Arrow", isActive: tool == .arrow) {
-                tool = .arrow
-            }
-
-            editorButton(systemName: "xmark", help: "Close") {
-                textPublishWorkItem?.cancel()
-                onCancel()
-            }
-        }
-        .padding(6)
-        .liquidGlassCapsule(interactive: true)
-    }
-
-    private func editorButton(
-        systemName: String,
-        help: String,
-        isActive: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(isActive ? Color.white : Color.primary)
-                .frame(width: 28, height: 28)
-                .background(isActive ? Color.accentColor.opacity(0.72) : Color.clear, in: Circle())
-                .liquidGlassCircle(interactive: true)
-        }
-        .buttonStyle(.plain)
-        .help(help)
-    }
-
-    private func annotationLayer(using projection: AnnotationProjection) -> some View {
-        ZStack(alignment: .topLeading) {
-            Rectangle()
-                .fill(Color.clear)
-                .contentShape(Rectangle())
-                .gesture(annotationGesture(using: projection))
-
-            Canvas { context, _ in
-                // FIXME: Preview drawing uses SwiftUI Canvas while final rendering uses AppKit in AnnotationDocument.
-                for arrow in document.arrows {
-                    drawPreviewArrow(arrow, using: projection, context: &context)
-                }
-
-                if let pendingArrow = document.pendingArrow {
-                    drawPreviewArrow(pendingArrow, using: projection, context: &context)
-                }
-            }
-            .allowsHitTesting(false)
-
-            ForEach(document.texts) { text in
-                TextField("", text: textBinding(for: text.id))
-                    .textFieldStyle(.plain)
-                    .font(.system(size: projection.displayFontSize(for: text), weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Color.red.opacity(0.92), in: RoundedRectangle(cornerRadius: 4))
-                    .fixedSize()
-                    .focused($focusedTextID, equals: text.id)
-                    .position(projection.viewPoint(for: text.position))
-            }
-        }
-        .clipped()
-    }
-
-    private func annotationGesture(using projection: AnnotationProjection) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                guard projection.containsViewPoint(value.location) else { return }
-
-                if tool == .arrow {
-                    document.updateArrow(to: projection.imagePoint(from: value.location))
-                }
-            }
-            .onEnded { value in
-                guard projection.containsViewPoint(value.location) else {
-                    document.cancelPendingArrow()
-                    return
-                }
-
-                switch tool {
-                case .text:
-                    addText(at: projection.imagePoint(from: value.location))
-                case .arrow:
-                    if document.finishArrow() {
-                        publishLiveCopy()
-                    }
-                }
-            }
-    }
-
-    private func addText(at point: CGPoint) {
-        let textID = document.addText(at: point)
-        publishLiveCopy()
-        DispatchQueue.main.async {
-            focusedTextID = textID
+private struct AnnotationViewport: View, Animatable {
+    @ObservedObject var editor: AnnotationEditor
+    var region: CGRect
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
+        get { .init(.init(region.origin.x, region.origin.y), .init(region.width, region.height)) }
+        set {
+            region = CGRect(
+                x: newValue.first.first, y: newValue.first.second, width: newValue.second.first,
+                height: newValue.second.second)
         }
     }
-
-    private func textBinding(for id: TextAnnotation.ID) -> Binding<String> {
-        Binding(
-            get: {
-                document.texts.first(where: { $0.id == id })?.value ?? ""
-            },
-            set: { value in
-                document.updateText(id: id, value: value)
-                scheduleTextLiveCopy()
+    var body: some View {
+        GeometryReader { proxy in
+            let projection = AnnotationProjection(visibleRegion: region, viewportSize: proxy.size)
+            ZStack(alignment: .topLeading) {
+                AnnotationCanvas(
+                    document: editor.document, selectedID: editor.selectedID, editingID: editor.editingID,
+                    cropTool: editor.tool == .crop, region: region
+                )
+                .allowsHitTesting(false)
+                AnnotationInput(editor: editor, projection: projection)
+                if let id = editor.editingID, let item = editor.document.annotations.first(where: { $0.id == id }),
+                    case .text(let text) = item.shape
+                {
+                    textField(text, color: item.color, projection: projection)
+                }
             }
+        }
+    }
+    private func textField(_ text: TextLabel, color: AnnotationColor, projection: AnnotationProjection) -> some View {
+        let rect = projection.viewRect(for: AnnotationRenderer.textRect(text, bounds: editor.document.bounds))
+        return AnnotationTextField(
+            value: text.string, fontSize: text.fontSize * projection.scale, color: color, onChange: editor.updateText
         )
+        .padding(.horizontal, text.fontSize * 0.45 * projection.scale)
+        .padding(.vertical, text.fontSize * 0.2 * projection.scale)
+        .frame(width: max(rect.width, 30), height: rect.height)
+        .background(
+            Color(nsColor: color.nsColor), in: RoundedRectangle(cornerRadius: text.fontSize * 0.3 * projection.scale)
+        )
+        .position(x: rect.midX, y: rect.midY)
     }
+}
 
-    private func publishLiveCopy() {
-        textPublishWorkItem?.cancel()
-        onPreviewChanged(document.render())
+private struct AnnotationTextField: NSViewRepresentable {
+    var value: String
+    var fontSize: CGFloat
+    var color: AnnotationColor
+    var onChange: (String) -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange) }
+    func makeNSView(context: Context) -> NSTextField {
+        let field = FocusingTextField(string: value)
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.lineBreakMode = .byClipping
+        field.usesSingleLineMode = true
+        field.setAccessibilityLabel("Annotation text")
+        field.delegate = context.coordinator
+        return field
     }
-
-    private func scheduleTextLiveCopy() {
-        textPublishWorkItem?.cancel()
-
-        let workItem = DispatchWorkItem {
-            onPreviewChanged(document.render())
+    func updateNSView(_ field: NSTextField, context: Context) {
+        field.font = .systemFont(ofSize: fontSize, weight: .semibold)
+        field.textColor = color.textColor
+        if field.stringValue != value { field.stringValue = value }
+    }
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        let onChange: (String) -> Void
+        init(onChange: @escaping (String) -> Void) { self.onChange = onChange }
+        func controlTextDidChange(_ notification: Notification) {
+            if let field = notification.object as? NSTextField { onChange(field.stringValue) }
         }
-
-        textPublishWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: workItem)
     }
+}
 
-    private func drawPreviewArrow(
-        _ arrow: ArrowAnnotation,
-        using projection: AnnotationProjection,
-        context: inout GraphicsContext
-    ) {
-        let start = projection.viewPoint(for: arrow.start)
-        let end = projection.viewPoint(for: arrow.end)
-        let angle = atan2(end.y - start.y, end.x - start.x)
-        let headLength: CGFloat = 18
-        let headAngle = CGFloat.pi / 7
+/// Takes the keyboard the moment it joins the window. Keys typed before that go through
+/// AnnotationEditor.key, so no key falls between the two.
+private final class FocusingTextField: NSTextField {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window else { return }
+        window.makeFirstResponder(self)
+        currentEditor()?.selectedRange = NSRange(location: stringValue.utf16.count, length: 0)
+    }
+}
 
-        var path = Path()
-        path.move(to: start)
-        path.addLine(to: end)
-        context.stroke(path, with: .color(.red), lineWidth: 4)
-
-        let firstHeadPoint = CGPoint(
-            x: end.x - headLength * cos(angle - headAngle),
-            y: end.y - headLength * sin(angle - headAngle)
-        )
-        let secondHeadPoint = CGPoint(
-            x: end.x - headLength * cos(angle + headAngle),
-            y: end.y - headLength * sin(angle + headAngle)
-        )
-
-        var head = Path()
-        head.move(to: firstHeadPoint)
-        head.addLine(to: end)
-        head.addLine(to: secondHeadPoint)
-        context.stroke(head, with: .color(.red), lineWidth: 4)
+private struct AnnotationCanvas: View {
+    var document: AnnotationDocument
+    var selectedID: UUID?
+    var editingID: UUID?
+    var cropTool: Bool
+    var region: CGRect
+    var body: some View {
+        Canvas { context, size in
+            let p = AnnotationProjection(visibleRegion: region, viewportSize: size)
+            // Gives a white image an edge against the window background.
+            var edge = context
+            edge.addFilter(.shadow(color: .black.opacity(0.18), radius: 14, y: 5))
+            edge.fill(Path(p.imageRect), with: .color(.white))
+            context.withCGContext { cg in
+                cg.saveGState()
+                cg.clip(to: p.imageRect)
+                cg.translateBy(x: p.imageRect.minX, y: p.imageRect.minY)
+                cg.scaleBy(x: p.scale, y: p.scale)
+                cg.translateBy(x: -region.minX, y: -region.minY)
+                AnnotationRenderer.drawBase(document.baseImage, bounds: document.bounds, in: cg)
+                AnnotationRenderer.draw(document, in: cg, skipping: editingID)
+                cg.restoreGState()
+            }
+            if cropTool, let crop = document.crop {
+                let rect = p.viewRect(for: crop)
+                var dim = Path(p.imageRect)
+                dim.addRect(rect)
+                context.fill(dim, with: .color(.black.opacity(0.5)), style: FillStyle(eoFill: true))
+                var border = context
+                border.addFilter(.shadow(color: .black.opacity(0.35), radius: 2, y: 1))
+                border.stroke(Path(rect), with: .color(.white), lineWidth: 1.5)
+                var brackets = Path()
+                for (index, corner) in rect.corners.enumerated() {
+                    let x: CGFloat = index == 0 || index == 3 ? 1 : -1
+                    let y: CGFloat = index < 2 ? 1 : -1
+                    brackets.move(to: corner + CGPoint(x: x * 16, y: 0))
+                    brackets.addLine(to: corner)
+                    brackets.addLine(to: corner + CGPoint(x: 0, y: y * 16))
+                }
+                border.stroke(brackets, with: .color(.white), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                for point in rect.cropHandles.dropFirst(4) {
+                    context.fill(
+                        Path(ellipseIn: CGRect(x: point.x - 3, y: point.y - 3, width: 6, height: 6)),
+                        with: .color(.white))
+                }
+                let label = Text(verbatim: "\(Int(crop.width)) × \(Int(crop.height))").font(
+                    .system(size: 11, weight: .medium)
+                )
+                .foregroundColor(.white)
+                let y = rect.maxY + 26 < p.imageRect.maxY ? rect.maxY + 15 : rect.maxY - 15
+                let width = context.resolve(label).measure(in: CGSize(width: 200, height: 30)).width + 16
+                let labelRect = CGRect(x: rect.midX - width / 2, y: y - 10, width: width, height: 20)
+                context.fill(Path(roundedRect: labelRect, cornerRadius: 10), with: .color(.black.opacity(0.75)))
+                context.draw(label, at: CGPoint(x: rect.midX, y: y))
+            } else if let selected = document.annotations.first(where: { $0.id == selectedID }), editingID == nil {
+                if case .text(let text) = selected.shape {
+                    let rect = p.viewRect(for: AnnotationRenderer.textRect(text, bounds: document.bounds))
+                    context.stroke(
+                        Path(roundedRect: rect.insetBy(dx: -2, dy: -2), cornerRadius: text.fontSize * 0.3 * p.scale),
+                        with: .color(.white), lineWidth: 1)
+                }
+                for (_, point) in selected.handles {
+                    let point = p.viewPoint(for: point)
+                    let path = Path(ellipseIn: CGRect(x: point.x - 4.5, y: point.y - 4.5, width: 9, height: 9))
+                    var shadow = context
+                    shadow.addFilter(.shadow(color: .black.opacity(0.35), radius: 2, y: 1))
+                    shadow.fill(path, with: .color(.white))
+                    context.stroke(path, with: .color(.black.opacity(0.65)), lineWidth: 0.75)
+                }
+            }
+        }
     }
 }
