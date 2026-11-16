@@ -181,8 +181,8 @@ private struct ImageHistoryRow: View {
         .buttonStyle(RowButtonStyle())
         .contextMenu {
             Button("Copy", action: onCopy)
-            Button("Annotate with Text") { onAnnotate(.text) }
-            Button("Annotate with Arrow") { onAnnotate(.arrow) }
+            Button("Annotate") { onAnnotate(.arrow) }
+            Button("Crop") { onAnnotate(.crop) }
             Divider()
             Button("Remove from History", role: .destructive, action: onRemove)
         }
@@ -235,8 +235,8 @@ private struct ImageHistoryRow: View {
 
     private var annotateButtons: some View {
         HStack(spacing: 2) {
-            annotateButton(systemName: "textformat", help: "Annotate with text", tool: .text)
-            annotateButton(systemName: "arrow.up.right", help: "Annotate with arrow", tool: .arrow)
+            annotateButton(systemName: "pencil.tip", help: "Annotate", tool: .arrow)
+            annotateButton(systemName: "crop", help: "Crop", tool: .crop)
         }
         .padding(2)
         .darkLiquidGlassCapsule()

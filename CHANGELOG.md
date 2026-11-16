@@ -6,6 +6,14 @@ This project follows semantic versioning. Release dates use ISO 8601 format.
 
 - ⇧⌘2 now copies the newest image at once, like ⌘Tab. Keep ⇧⌘ held and press 2 or the arrow keys to
   pick an older image, then let go to copy it.
+- Rebuilt the annotation editor. Arrows have a tapered shaft and a filled head, can curve, and stay
+  readable on light and dark images. Boxes join arrows and text.
+- Added cropping. The crop stays adjustable until you finish, and the editor shows only the cropped
+  part while you annotate it.
+- Annotations can now be selected, moved, recolored, deleted and undone.
+- Typing in the editor adds text without picking the text tool, and labels the arrow you just drew.
+- The editor works from the keyboard. 1 to 4 pick a tool, Return copies and closes, Escape cancels.
+- The editor toolbar sits below the image and no longer covers its corner.
 
 ## 1.1.0 - 2026-11-11
 

@@ -129,6 +129,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 }
                 .store(in: &cancellables)
         }
+        let environment = ProcessInfo.processInfo.environment
+        if let path = environment["BARCUT_ANNOTATE"], FileManager.default.isReadableFile(atPath: path),
+           let image = NSImage(contentsOfFile: path) {
+            openAnnotationEditor(image: image, initialTool: environment["BARCUT_ANNOTATE_TOOL"] == "crop" ? .crop : .arrow)
+        }
     }
 
     @objc private func statusItemClicked() {
@@ -272,6 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             )
         )
 
+        window.setContentSize(contentSize)
         editorWindows.append(window)
         window.center()
         window.makeKeyAndOrderFront(nil)
@@ -285,17 +291,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             height: min(screenSize.height * 0.82, 800)
         )
 
-        guard image.size.width > 0, image.size.height > 0 else {
+        let pixels = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        let imageSize = pixels.map { CGSize(width: $0.width, height: $0.height) } ?? image.size
+        guard imageSize.width > 0, imageSize.height > 0 else {
             return NSSize(width: 760, height: 520)
         }
 
         let imageScale = min(
-            (maxSize.width - 32) / image.size.width,
-            (maxSize.height - 32) / image.size.height,
+            (maxSize.width - 2 * AnnotationLayout.margin) / imageSize.width,
+            (maxSize.height - 2 * AnnotationLayout.margin - AnnotationLayout.toolbarBand) / imageSize.height,
             1.0
         )
-        let width = max(640, image.size.width * imageScale + 32)
-        let height = max(420, image.size.height * imageScale + 32)
+        let width = max(640, imageSize.width * imageScale + 2 * AnnotationLayout.margin)
+        let height = max(420, imageSize.height * imageScale + 2 * AnnotationLayout.margin + AnnotationLayout.toolbarBand)
 
         return NSSize(width: width, height: height)
     }
