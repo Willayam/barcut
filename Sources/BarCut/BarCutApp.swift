@@ -42,6 +42,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// The app in front when the popover opened. A click or the shortcut makes BarCut the
     /// active app, so this one gets the keyboard back afterwards.
     private var previousApp: NSRunningApplication?
+    /// Set while the shortcut opened the history and ⌘ is still down. Letting go copies the
+    /// selection, the way ⌘Tab switches apps on release.
+    private var browsing: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -89,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .filter { [weak self] id in id != nil && self?.popover.isShown == true }
         copied
             .sink { [weak self] _ in
+                self?.browsing = nil
                 self?.popover.behavior = .applicationDefined
                 self?.returnKeyboard()
             }
@@ -102,6 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         NotificationCenter.default.publisher(for: NSPopover.didCloseNotification, object: popover)
             .sink { [weak self] _ in
+                self?.browsing = nil
                 self?.popover.behavior = .transient
                 self?.previousApp = nil
                 self?.panel.selectedID = nil
@@ -120,7 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             panel.$shortcutEnabled
                 .sink { [weak self] enabled in
                     UserDefaults.standard.set(enabled, forKey: "openShortcutEnabled")
-                    self?.hotKey = enabled ? GlobalHotKey.openHistory { self?.togglePopover(fromKeyboard: true) } : nil
+                    self?.hotKey = enabled ? GlobalHotKey.openHistory { self?.shortcutPressed() } : nil
                 }
                 .store(in: &cancellables)
         }
@@ -128,6 +133,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func statusItemClicked() {
         togglePopover(fromKeyboard: false)
+    }
+
+    /// Pressing 2 again with ⇧⌘ still down moves to the next image.
+    private func shortcutPressed() {
+        if browsing != nil {
+            moveSelection(by: 1)
+        } else {
+            togglePopover(fromKeyboard: true)
+        }
     }
 
     private func togglePopover(fromKeyboard: Bool) {
@@ -146,6 +160,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if fromKeyboard {
             panel.selectedID = monitor.images.first?.id
             NSApplication.shared.activate(ignoringOtherApps: true)
+            // Polls rather than waiting for a key event, because ⌘ can come up before BarCut is
+            // active and that event then goes to the other app. Waiting until BarCut is active
+            // keeps the copy from handing the keyboard back before BarCut has taken it.
+            browsing = Timer.publish(every: 0.03, on: .main, in: .common)
+                .autoconnect()
+                .filter { _ in NSApplication.shared.isActive && !NSEvent.modifierFlags.contains(.command) }
+                .first()
+                .sink { [weak self] _ in self?.copySelection() }
         }
         popover.contentSize = NSSize(
             width: ImageHistoryView.width,
@@ -184,18 +206,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         returnTo?.activate(from: .current, options: [])
     }
 
-    private func handlePopoverKey(_ event: NSEvent) -> Bool {
+    /// Copies the selected image, or the newest when nothing is selected.
+    @discardableResult
+    private func copySelection() -> Bool {
+        browsing = nil
         let images = monitor.images
-        let selectedIndex = images.firstIndex { $0.id == panel.selectedID }
+        guard let entry = images.first(where: { $0.id == panel.selectedID }) ?? images.first else { return false }
+        monitor.copy(entry)
+        return true
+    }
 
+    private func moveSelection(by offset: Int) {
+        let images = monitor.images
+        guard let index = images.firstIndex(where: { $0.id == panel.selectedID }) else {
+            panel.selectedID = images.first?.id
+            return
+        }
+        panel.selectedID = images[safe: index + offset]?.id ?? panel.selectedID
+    }
+
+    private func handlePopoverKey(_ event: NSEvent) -> Bool {
         switch Int(event.keyCode) {
         case kVK_DownArrow:
-            panel.selectedID = images[safe: (selectedIndex ?? -1) + 1]?.id ?? panel.selectedID
+            moveSelection(by: 1)
         case kVK_UpArrow:
-            panel.selectedID = images[safe: (selectedIndex ?? 1) - 1]?.id ?? panel.selectedID
+            moveSelection(by: -1)
         case kVK_Return, kVK_ANSI_KeypadEnter:
-            guard let entry = images[safe: selectedIndex ?? 0] else { return false }
-            monitor.copy(entry)
+            return copySelection()
         case kVK_Escape:
             returnKeyboard()
             popover.performClose(nil)

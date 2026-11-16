@@ -40,9 +40,9 @@ You only need to do steps 3 and 4 once. Developers can build the app from source
 2. Select the BarCut icon in the menu bar.
 3. Select a thumbnail to copy it. Use the controls on a thumbnail to add text or an arrow.
 
-Press ⇧⌘2 to open the history from the keyboard. The arrow keys choose an image, Return copies it,
-and Escape closes the history. The keyboard then goes back to the app you were in, so you can paste
-right away.
+Press ⇧⌘2 to copy the newest image. The keyboard goes back to the app you were in, so you can paste
+right away. To copy an older one, keep ⇧⌘ held and press 2 or the arrow keys to move through the
+history, then let go. Escape closes the history without copying.
 
 Control-click a thumbnail to remove that one image from history.
 
