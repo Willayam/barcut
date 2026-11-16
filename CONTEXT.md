@@ -33,15 +33,19 @@ The normal macOS screenshot experience, including the **Floating Thumbnail** and
 _Avoid_: File-only behavior, final screenshot result
 
 **Annotated Image**:
-A **Screenshot** or image from **Image History** with one or more **Annotations** applied.
+A **Screenshot** or image from **Image History** with one or more **Annotations**, a **Crop**, or both applied.
 _Avoid_: Edited screenshot, marked-up copy
 
 **Annotation**:
-A text or arrow item placed on an image in BarCut.
+An arrow, box or text item placed on an image in BarCut.
 _Avoid_: Marking, edit
 
+**Crop**:
+The rectangle of an image that the **Annotated Image** keeps.
+_Avoid_: Trim, selection
+
 **Annotation Document**:
-The in-progress editable image and its **Annotations** before BarCut produces an **Annotated Image**.
+The in-progress editable image, its **Annotations** and its **Crop** before BarCut produces an **Annotated Image**.
 _Avoid_: Annotated image draft, overlay list
 
 ## Relationships
@@ -60,7 +64,8 @@ _Avoid_: Annotated image draft, overlay list
 - Copying from **Image History** is not a new **Clipboard Image**.
 - **Image History** tracks visually distinct images, not every user action.
 - **Image History** is ordered by recency.
-- An **Annotated Image** has one or more **Annotations**.
+- An **Annotated Image** has one or more **Annotations**, a **Crop**, or both.
+- An **Annotation Document** has at most one **Crop**.
 - An **Annotation Document** produces an **Annotated Image**.
 
 ## Example dialogue

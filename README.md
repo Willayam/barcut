@@ -1,7 +1,7 @@
 # BarCut
 
 BarCut keeps your latest screenshots and copied images in the macOS menu bar. Open the menu to copy
-an image again or add text and arrow annotations.
+an image again, crop it, or mark it up with arrows, boxes and text.
 
 BarCut requires macOS 26 or later on an Apple silicon Mac (M1 or later).
 
@@ -38,13 +38,30 @@ You only need to do steps 3 and 4 once. Developers can build the app from source
 
 1. Take a screenshot or copy an image.
 2. Select the BarCut icon in the menu bar.
-3. Select a thumbnail to copy it. Use the controls on a thumbnail to add text or an arrow.
+3. Select a thumbnail to copy it. Use the controls on a thumbnail to annotate or crop it.
 
 Press ⇧⌘2 to copy the newest image. The keyboard goes back to the app you were in, so you can paste
 right away. To copy an older one, keep ⇧⌘ held and press 2 or the arrow keys to move through the
 history, then let go. Escape closes the history without copying.
 
 Control-click a thumbnail to remove that one image from history.
+
+### Annotate and crop
+
+Point at a thumbnail and select the pencil to annotate or the crop icon to crop. The editor opens
+ready to draw, so the first drag is already an arrow.
+
+- Drag to draw an arrow. Drag its middle handle to curve it and its ends to re-aim it.
+- Type to add text. Right after you draw an arrow, the text labels that arrow. Otherwise it appears
+  under the pointer.
+- Press 1 for arrows, 2 for boxes, 3 for text and 4 for crop.
+- With the crop tool, drag over the part to keep. Drag the edges to adjust it. Switch to another
+  tool and the editor shows only the cropped part.
+- Select any annotation to move it, recolor it, or remove it with Delete. ⌘Z undoes.
+- Hold Shift to snap an arrow to 45° steps or to make a box square.
+
+BarCut copies the image after every change, so you can paste at any point. Press Return to add the
+result to the history and close the editor. Escape closes it without adding anything.
 
 Open the menu in the history panel to clear history, enable Open at Login, turn the ⇧⌘2 shortcut
 off, or quit. Clear History asks before it deletes anything. BarCut does not enable Open at Login
