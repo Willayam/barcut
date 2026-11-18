@@ -33,7 +33,7 @@ other people in fixtures or bug reports.
 
 ## Release a Mac download
 
-Set the GitHub Actions secrets `APPLE_CERTIFICATE` (base64 of a Developer ID Application .p12),
+Set the GitHub Actions secrets `APPLE_CERTIFICATE` (base64 of a Developer ID Application .p12 with its Apple intermediate certificate),
 `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_TEAM_ID` and
 `APPLE_PASSWORD` (an app-specific password). Update both version fields in Info.plist and push
 a tag matching the short version, such as `v1.2.0`. The release workflow verifies the stapled

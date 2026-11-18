@@ -31,6 +31,8 @@ jobs:
           umask 077
           printf '%s' "$APPLE_CERTIFICATE" | base64 -D > "$cert"
           security import "$cert" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -k "$keychain"
+          security find-certificate -c "Apple Root CA" -p /System/Library/Keychains/SystemRootCertificates.keychain > "$RUNNER_TEMP/apple-root.pem"
+          security add-certificates -k "$keychain" "$RUNNER_TEMP/apple-root.pem"
           security list-keychains -d user -s "$keychain"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
       - name: Build, notarize and package
