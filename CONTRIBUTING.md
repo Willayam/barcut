@@ -30,3 +30,11 @@ git diff --check
 Keep pull requests limited to one change. Explain user-visible behavior and add tests for storage,
 clipboard, or screenshot monitoring changes. Do not include screenshots or clipboard contents from
 other people in fixtures or bug reports.
+
+## Release a Mac download
+
+Set the GitHub Actions secrets `APPLE_CERTIFICATE` (base64 of a Developer ID Application .p12),
+`APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_TEAM_ID` and
+`APPLE_PASSWORD` (an app-specific password). Update both version fields in Info.plist and push
+a tag matching the short version, such as `v1.2.0`. The release workflow verifies the stapled
+app and disk image with Gatekeeper before publishing the DMG and the zip used by install.sh.

@@ -22,6 +22,8 @@ curl -fsSL "$url" -o "$work/BarCut.zip" || fail "the download failed. Check your
 ditto -x -k "$work/BarCut.zip" "$work"
 [ -d "$work/BarCut.app" ] || fail "the download did not contain BarCut.app."
 
+spctl --assess --type execute "$work/BarCut.app" || fail "macOS could not verify the downloaded app."
+
 if pgrep -x BarCut >/dev/null; then
     echo "Quitting the running copy of BarCut..."
     pkill -x BarCut || true
@@ -30,7 +32,6 @@ fi
 
 rm -rf "$dest/BarCut.app"
 ditto "$work/BarCut.app" "$dest/BarCut.app"
-xattr -dr com.apple.quarantine "$dest/BarCut.app" 2>/dev/null || true
 open "$dest/BarCut.app"
 
 echo "Installed $dest/BarCut.app. Look for the BarCut icon in the menu bar."
