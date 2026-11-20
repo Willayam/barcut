@@ -18,7 +18,7 @@ notarize() {
 }
 
 ./scripts/build-app.sh
-lipo -verify_arch arm64 BarCut.app/Contents/MacOS/BarCut
+lipo BarCut.app/Contents/MacOS/BarCut -verify_arch arm64
 codesign --verify --deep --strict BarCut.app
 ditto -c -k --keepParent BarCut.app "$work/submission.zip"
 notarize "$work/submission.zip"
