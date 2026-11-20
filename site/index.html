@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BarCut · Screenshot history for Mac</title>
+<meta name="description" content="Find, crop, and mark up your latest screenshots and copied images from the macOS menu bar. Free and open source.">
+<meta name="theme-color" content="#f4f2ed" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121316" media="(prefers-color-scheme: dark)">
+<link rel="canonical" href="https://barcut.app/">
+<link rel="icon" href="icon.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="preview.js" defer></script>
+</head>
+<body>
+<div class="wrap">
+  <header class="top" id="top">
+    <a class="brand" href="./"><img src="icon.png" width="34" height="34" alt="">BarCut</a>
+    <nav aria-label="Main navigation">
+      <a href="#workflow">How it works</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/Willayam/barcut">GitHub&nbsp;↗</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="headline">
+      <div class="intro">
+        <p class="label">Screenshot history for Mac</p>
+        <h1 id="headline">Your screenshots,<br><em>in the menu bar.</em></h1>
+        <p class="lead">Find the screenshot you just took. Copy it again, crop it, or add an arrow before you paste it.</p>
+        <div class="actions">
+          <a class="download" href="/download/mac"><span aria-hidden="true">↓</span> Download for Mac</a>
+          <a class="source" href="https://github.com/Willayam/barcut">View source&nbsp;↗</a>
+        </div>
+        <p class="note">Free and open source · macOS 26+ · Apple silicon</p>
+      </div>
+
+      <figure class="preview">
+        <div class="preview-bar">
+          <span class="preview-title">BarCut preview</span>
+          <span class="menubar-mark"><img src="icon.png" width="20" height="20" alt=""> BarCut</span>
+        </div>
+        <div class="demo" data-mode="history" role="img" aria-label="A sample screenshot selected in BarCut history.">
+          <div class="sample" aria-hidden="true">
+            <div class="sample-top"><span class="sample-dots"></span><span>Project overview</span></div>
+            <div class="sample-body">
+              <div class="sample-sidebar"><i></i><i></i><i></i><i></i></div>
+              <div class="sample-main">
+                <b>Weekly activity</b>
+                <div class="chart"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                <div class="sample-lines"><i></i><i></i></div>
+              </div>
+            </div>
+            <div class="markup"><span>Check this spike</span><i></i></div>
+            <div class="crop-frame"><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="history" aria-hidden="true">
+            <div class="history-title"><b>BarCut</b><span>⋯</span></div>
+            <div class="thumb thumb-chart"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="thumb thumb-text"><i></i><i></i><i></i></div>
+          </div>
+        </div>
+        <div class="preview-controls" role="group" aria-label="Preview mode" hidden>
+          <button type="button" data-mode="history" aria-pressed="true">History</button>
+          <button type="button" data-mode="annotate" aria-pressed="false">Annotate</button>
+          <button type="button" data-mode="crop" aria-pressed="false">Crop</button>
+        </div>
+        <figcaption aria-live="polite">The menu keeps your latest screenshots and copied images.</figcaption>
+      </figure>
+    </section>
+
+    <section class="section" id="workflow" aria-labelledby="workflow-title">
+      <h2 id="workflow-title">From screenshot <em>to paste.</em></h2>
+      <div class="features">
+        <div>
+          <h3>Find an earlier image</h3>
+          <p>Take a screenshot or copy an image. Open BarCut and click a thumbnail to copy it again. BarCut keeps the latest ten images on your Mac.</p>
+        </div>
+        <div>
+          <h3>Copy with the keyboard</h3>
+          <p>Press <kbd aria-label="Shift Command 2">⇧⌘2</kbd> to copy the newest image. Keep Shift and Command held and press 2 or an arrow key to choose an older one. Release to copy.</p>
+        </div>
+        <div>
+          <h3>Crop and mark up</h3>
+          <p>Draw arrows and boxes, type a label, or crop to the part you want. BarCut copies the result after every edit, ready to paste.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section install" id="install" aria-labelledby="install-title">
+      <div>
+        <h2 id="install-title">Install <em>BarCut.</em></h2>
+        <p>For macOS 26 or later on an Apple silicon Mac. BarCut works locally and makes no network requests.</p>
+        <div class="actions">
+          <a class="download" href="/download/mac"><span aria-hidden="true">↓</span> Download for Mac</a>
+        </div>
+      </div>
+      <ol class="install-steps">
+        <li>Open the downloaded disk image and drag BarCut to Applications.</li>
+        <li>Open BarCut from Applications. Its icon appears in the menu bar.</li>
+        <li>If macOS asks for access to your Desktop, click <strong>Allow</strong> so BarCut can find new screenshots in the default screenshot folder.</li>
+      </ol>
+    </section>
+  </main>
+
+  <footer>
+    <p>BarCut · MIT license · Made by <a href="https://williamlarsten.com">William Larsten</a></p>
+    <nav aria-label="Footer">
+      <a href="https://see.computer">See for dictation and screen capture&nbsp;↗</a>
+      <a href="https://github.com/Willayam/barcut/releases/latest">Releases&nbsp;↗</a>
+    </nav>
+  </footer>
+</div>
+</body>
+</html>

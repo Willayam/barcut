@@ -14,41 +14,35 @@ jobs:
       - uses: actions/checkout@v7
       - name: Check tag and app version
         run: test "${GITHUB_REF_NAME#v}" = "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)"
-      - name: Import Developer ID certificate
+      - name: Import Developer ID Application certificate
         env:
-          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
-          if [ -z "$APPLE_CERTIFICATE_P12" ]; then echo "No Developer ID certificate. Signing ad hoc."; exit 0; fi
-          echo "$APPLE_CERTIFICATE_P12" | base64 -D > certificate.p12
-          security create-keychain -p "$KEYCHAIN_PASSWORD" release.keychain-db
-          security set-keychain-settings -lut 21600 release.keychain-db
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" release.keychain-db
-          security import certificate.p12 -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k release.keychain-db
-          security list-keychain -d user -s release.keychain-db
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" release.keychain-db
-      - name: Build and sign
+          : "${APPLE_CERTIFICATE:?Missing signing certificate}"
+          : "${APPLE_CERTIFICATE_PASSWORD:?Missing certificate password}"
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          password=$(openssl rand -hex 32)
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          cert="$RUNNER_TEMP/certificate.p12"
+          trap 'rm -f "$cert"' EXIT
+          umask 077
+          printf '%s' "$APPLE_CERTIFICATE" | base64 -D > "$cert"
+          security import "$cert" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -k "$keychain"
+          security find-certificate -c "Apple Root CA" -p /System/Library/Keychains/SystemRootCertificates.keychain > "$RUNNER_TEMP/apple-root.pem"
+          security add-certificates -k "$keychain" "$RUNNER_TEMP/apple-root.pem"
+          security list-keychains -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
+      - name: Build, notarize and package
         env:
-          CODESIGN_IDENTITY: ${{ secrets.CODESIGN_IDENTITY }}
-        run: ./scripts/build-app.sh
-      - name: Notarize if configured, then package
-        env:
+          CODESIGN_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        run: |
-          if [ -n "$APPLE_ID" ]; then
-            ditto -c -k --keepParent BarCut.app BarCut-notarize.zip
-            xcrun notarytool submit BarCut-notarize.zip --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
-            xcrun stapler staple BarCut.app
-          else
-            echo "No Apple ID. Skipping notarization."
-          fi
-          mkdir release
-          ditto -c -k --keepParent BarCut.app release/BarCut.zip
-          shasum -a 256 release/BarCut.zip > release/BarCut.zip.sha256
-      - name: Publish GitHub release
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        run: ./scripts/package-release.sh
+      - name: Publish verified installer
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" release/* --generate-notes --verify-tag

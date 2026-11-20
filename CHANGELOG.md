@@ -2,7 +2,9 @@
 
 This project follows semantic versioning. Release dates use ISO 8601 format.
 
-## Unreleased
+## 1.2.0
+
+- Added a drag-to-Applications disk image for Mac downloads.
 
 - ⇧⌘2 now copies the newest image at once, like ⌘Tab. Keep ⇧⌘ held and press 2 or the arrow keys to
   pick an older image, then let go to copy it.

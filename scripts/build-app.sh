@@ -11,7 +11,11 @@ mkdir -p "$app/Contents/Resources"
 cp Info.plist "$app/Contents/Info.plist"
 cp .build/release/BarCut "$app/Contents/MacOS/BarCut"
 cp Assets/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
-codesign --force --deep --options runtime --sign "${CODESIGN_IDENTITY:--}" "$app" 2>/dev/null
+signing_args=(--force --options runtime --sign "${CODESIGN_IDENTITY:--}")
+if [[ "${CODESIGN_IDENTITY:-}" == "Developer ID Application: "* ]]; then
+    signing_args+=(--timestamp)
+fi
+codesign "${signing_args[@]}" "$app"
 echo "built $PWD/$app"
 
 if [ "${1:-}" = "--install" ]; then

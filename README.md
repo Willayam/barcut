@@ -7,32 +7,12 @@ BarCut requires macOS 26 or later on an Apple silicon Mac (M1 or later).
 
 ## Install
 
-1. Open Terminal. Press ⌘Space, type `Terminal`, and press Return.
-2. Copy this line, paste it into Terminal, and press Return:
+1. [Download BarCut for Mac](https://barcut.app/download/mac).
+2. Open the disk image and drag BarCut into Applications.
+3. Open BarCut from Applications. If macOS asks for access to your screenshot folder, click Allow.
 
-   ```sh
-   curl -fsSL https://raw.githubusercontent.com/Willayam/barcut/main/install.sh | bash
-   ```
-
-3. If macOS asks whether BarCut can access files in your Desktop folder, click Allow. BarCut needs
-   this to see new screenshots.
-
-The BarCut icon appears in the menu bar at the top right of the screen. You can close Terminal.
-
-To update BarCut, run the same line again. The script downloads the latest release, quits BarCut if
-it is running, puts `BarCut.app` in `/Applications`, and opens it. If your account cannot write to
-`/Applications`, it uses `~/Applications` instead. Read [install.sh](install.sh) to see every step.
-
-### Install without Terminal
-
-1. Download `BarCut.zip` from the [latest release](https://github.com/Willayam/barcut/releases/latest).
-2. Open the zip file and drag `BarCut.app` into your Applications folder.
-3. Open BarCut. Apple has not notarized BarCut, so macOS says it cannot verify the app. Click Done.
-4. Open System Settings, select Privacy & Security, and scroll to the bottom. Click Open Anyway
-   next to the message about BarCut, then confirm.
-
-You only need to do steps 3 and 4 once. Developers can build the app from source by following
-[CONTRIBUTING.md](CONTRIBUTING.md).
+Look for BarCut in the menu bar. To update, quit BarCut and replace the app with the new download.
+Developers can build from source by following [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Use BarCut
 
