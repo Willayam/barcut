@@ -176,7 +176,7 @@ a { color: inherit; text-decoration: none; }
 img, svg { display: block; max-width: 100%; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 p, figure { margin: 0; }
-p { text-wrap: pretty; }
+p, dd, li { text-wrap: pretty; }
 h1, h2, h3 { margin: 0; }
 .serif, h1, h2 {
   font-family: var(--serif);

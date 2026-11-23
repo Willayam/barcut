@@ -198,7 +198,6 @@
   line-height: 1.1;
   color: var(--ember);
 }
-.steps li { text-wrap: pretty; }
 .steps strong { font-weight: 600; }
 footer nav b { font-weight: 600; color: var(--on-deep); }
 
