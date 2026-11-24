@@ -10,7 +10,11 @@ mkdir -p "$app/Contents/MacOS"
 mkdir -p "$app/Contents/Resources"
 cp Info.plist "$app/Contents/Info.plist"
 cp .build/release/BarCut "$app/Contents/MacOS/BarCut"
-cp Assets/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+# Compiles the Icon Composer icon into Assets.car (light, dark and tinted) plus AppIcon.icns.
+xcrun actool Assets/AppIcon.icon --compile "$app/Contents/Resources" --app-icon AppIcon \
+    --output-partial-info-plist "$(mktemp -d)/icon.plist" --enable-on-demand-resources NO \
+    --development-region en --target-device mac --minimum-deployment-target 26.0 --platform macosx \
+    --output-format human-readable-text >/dev/null
 signing_args=(--force --options runtime --sign "${CODESIGN_IDENTITY:--}")
 if [[ "${CODESIGN_IDENTITY:-}" == "Developer ID Application: "* ]]; then
     signing_args+=(--timestamp)
