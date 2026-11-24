@@ -4,47 +4,54 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BarCut · Screenshot history for Mac</title>
-<meta name="description" content="Find, crop, and mark up your latest screenshots and copied images from the macOS menu bar. Free and open source.">
-<meta name="theme-color" content="#f4f2ed" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#121316" media="(prefers-color-scheme: dark)">
+<meta name="description" content="Get to your latest screenshots and copied images in one click from the macOS menu bar, then crop or mark them up. Free and open source.">
+<meta name="theme-color" content="#f8f1e4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0c1427" media="(prefers-color-scheme: dark)">
 <link rel="canonical" href="https://barcut.app/">
-<link rel="icon" href="icon.png" type="image/png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="icon" href="icon-dark.png" type="image/png" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="icon.png" type="image/png" media="(prefers-color-scheme: light)">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preload" as="font" type="font/woff2" href="fonts/fraunces-latin.woff2" crossorigin>
+<link rel="preload" as="font" type="font/woff2" href="fonts/gabarito-latin.woff2" crossorigin>
+<link rel="preload" as="font" type="font/woff2" href="fonts/fraunces-italic-latin.woff2" crossorigin>
+<link rel="stylesheet" href="family.css">
 <link rel="stylesheet" href="style.css">
+<script>document.documentElement.classList.add('js')</script>
+<script src="family.js" defer></script>
 <script src="preview.js" defer></script>
 </head>
 <body>
-<div class="wrap">
-  <header class="top" id="top">
-    <a class="brand" href="./"><img src="icon.png" width="34" height="34" alt="">BarCut</a>
-    <nav aria-label="Main navigation">
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./"><picture><source srcset="icon-dark.png" media="(prefers-color-scheme: dark)"><img src="icon.png" width="30" height="30" alt=""></picture><span class="name">BarCut</span></a>
+    <nav class="nav" aria-label="Main navigation">
       <a href="#workflow">How it works</a>
       <a href="#install">Install</a>
-      <a href="https://github.com/Willayam/barcut">GitHub&nbsp;↗</a>
     </nav>
-  </header>
+    <a class="aside link" href="https://github.com/Willayam/barcut">GitHub</a>
+  </div>
+</header>
 
-  <main>
-    <section class="hero" aria-labelledby="headline">
-      <div class="intro">
-        <p class="label">Screenshot history for Mac</p>
-        <h1 id="headline">Your screenshots,<br><em>in the menu bar.</em></h1>
-        <p class="lead">Find the screenshot you just took. Copy it again, crop it, or add an arrow before you paste it.</p>
-        <div class="actions">
-          <a class="download" href="/download/mac"><span aria-hidden="true">↓</span> Download for Mac</a>
-          <a class="source" href="https://github.com/Willayam/barcut">View source&nbsp;↗</a>
-        </div>
+<main id="main">
+  <section class="hero" aria-labelledby="headline">
+    <div class="wrap hero-inner"><div class="hero-grid">
+      <h1 id="headline" class="rise"><span class="w" style="--i:0"><span>Get</span></span> <span class="w" style="--i:1"><span>to</span></span> <span class="w" style="--i:2"><span>your</span></span><br><span class="w" style="--i:3"><span>screenshots</span></span><br class="last"> <span class="w" style="--i:4"><span><em>faster.</em></span></span></h1>
+      <div class="plate sq"></div>
+      <div class="say after">
+        <p class="lede">The screenshot you just took is one click away in the menu bar. <br>Copy it again, crop it, or add an arrow before you paste it.</p>
         <p class="note">Free and open source · macOS 26+ · Apple silicon</p>
+      </div>
+      <div class="cta-row after">
+        <a class="key cta sq" href="/download/mac">Download for Mac</a>
       </div>
 
       <figure class="preview">
-        <div class="preview-bar">
-          <span class="preview-title">BarCut preview</span>
-          <span class="menubar-mark"><img src="icon.png" width="20" height="20" alt=""> BarCut</span>
-        </div>
-        <div class="demo" data-mode="history" role="img" aria-label="A sample screenshot selected in BarCut history.">
+        <div class="demo wallpaper sq" data-mode="history" role="img" aria-label="A sample screenshot selected in BarCut history.">
+          <div class="menubar" aria-hidden="true">
+            <span class="apps"><b>Finder</b><i>File</i><i>Edit</i><i>View</i></span>
+            <span class="status"><picture><source srcset="icon-dark.png" media="(prefers-color-scheme: dark)"><img src="icon.png" width="16" height="16" alt=""></picture><span>9:41</span></span>
+          </div>
           <div class="sample" aria-hidden="true">
             <div class="sample-top"><span class="sample-dots"></span><span>Project overview</span></div>
             <div class="sample-body">
@@ -55,65 +62,97 @@
                 <div class="sample-lines"><i></i><i></i></div>
               </div>
             </div>
-            <div class="markup"><span>Check this spike</span><i></i></div>
+            <div class="markup">
+              <span>Check this spike</span>
+              <svg viewBox="0 0 64 44" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path pathLength="1" d="M60 4C40 5 20 14 7 37"/><path pathLength="1" d="M5 22l2 15 14-5"/></svg>
+            </div>
             <div class="crop-frame"><i></i><i></i><i></i><i></i></div>
           </div>
           <div class="history" aria-hidden="true">
             <div class="history-title"><b>BarCut</b><span>⋯</span></div>
-            <div class="thumb thumb-chart"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="thumb thumb-chart"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="thumb thumb-photo wallpaper"></div>
             <div class="thumb thumb-text"><i></i><i></i><i></i></div>
           </div>
         </div>
-        <div class="preview-controls" role="group" aria-label="Preview mode" hidden>
-          <button type="button" data-mode="history" aria-pressed="true">History</button>
-          <button type="button" data-mode="annotate" aria-pressed="false">Annotate</button>
-          <button type="button" data-mode="crop" aria-pressed="false">Crop</button>
+        <div class="preview-foot">
+          <div class="preview-controls" role="group" aria-label="Preview mode" hidden>
+            <button class="key small sq" type="button" data-mode="history" aria-pressed="true">History</button>
+            <button class="key small sq" type="button" data-mode="annotate" aria-pressed="false">Annotate</button>
+            <button class="key small sq" type="button" data-mode="crop" aria-pressed="false">Crop</button>
+          </div>
+          <figcaption aria-live="polite">The menu keeps your latest screenshots and copied images.</figcaption>
         </div>
-        <figcaption aria-live="polite">The menu keeps your latest screenshots and copied images.</figcaption>
       </figure>
-    </section>
+    </div></div>
+  </section>
 
-    <section class="section" id="workflow" aria-labelledby="workflow-title">
-      <h2 id="workflow-title">From screenshot <em>to paste.</em></h2>
-      <div class="features">
-        <div>
+  <section id="workflow" aria-labelledby="workflow-title">
+    <div class="wrap">
+      <h2 id="workflow-title" data-reveal>From screenshot <em>to paste.</em></h2>
+      <ul class="tiles">
+        <li class="tile sq" data-reveal>
+          <div class="art art-strip" aria-hidden="true">
+            <span class="thumb thumb-text"><i></i><i></i><i></i></span>
+            <span class="thumb thumb-photo wallpaper picked"></span>
+            <span class="thumb thumb-chart"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          </div>
           <h3>Find an earlier image</h3>
           <p>Take a screenshot or copy an image. Open BarCut and click a thumbnail to copy it again. BarCut keeps the latest ten images on your Mac.</p>
-        </div>
-        <div>
+        </li>
+        <li class="tile sq" data-reveal>
+          <div class="art art-keys" aria-hidden="true">
+            <span class="cap sq">⇧</span><span class="cap sq">⌘</span><span class="cap sq hit">2</span>
+          </div>
           <h3>Copy with the keyboard</h3>
           <p>Press <kbd aria-label="Shift Command 2">⇧⌘2</kbd> to copy the newest image. Keep Shift and Command held and press 2 or an arrow key to choose an older one. Release to copy.</p>
-        </div>
-        <div>
+        </li>
+        <li class="tile sq" data-reveal>
+          <div class="art art-crop" aria-hidden="true">
+            <span class="shot wallpaper">
+              <span class="crop-frame"><i></i><i></i><i></i><i></i></span>
+              <svg viewBox="0 0 64 44" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6c20 1 40 10 53 31"/><path d="M59 22l-2 15-14-5"/></svg>
+            </span>
+          </div>
           <h3>Crop and mark up</h3>
           <p>Draw arrows and boxes, type a label, or crop to the part you want. BarCut copies the result after every edit, ready to paste.</p>
-        </div>
-      </div>
-    </section>
+        </li>
+      </ul>
+    </div>
+  </section>
 
-    <section class="section install" id="install" aria-labelledby="install-title">
+  <div class="ridges" aria-hidden="true">
+    <svg class="ridge far" viewBox="0 0 1440 240" preserveAspectRatio="none"><path d="M0 90C150 44 320 8 520 36C700 61 770 120 910 124C1085 129 1235 58 1440 24V240H0Z"/><path d="M0 90C150 44 320 8 520 36C700 61 770 120 910 124C1085 129 1235 58 1440 24"/></svg>
+    <svg class="ridge near" viewBox="0 0 1440 240" preserveAspectRatio="none"><path d="M0 26C180 72 330 110 560 102C760 95 905 34 1100 16C1250 3 1365 30 1440 54V240H0Z"/><path d="M0 26C180 72 330 110 560 102C760 95 905 34 1100 16C1250 3 1365 30 1440 54"/></svg>
+  </div>
+
+  <section class="deep install" id="install" aria-labelledby="install-title">
+    <div class="wrap install-grid">
       <div>
-        <h2 id="install-title">Install <em>BarCut.</em></h2>
-        <p>For macOS 26 or later on an Apple silicon Mac. BarCut works locally and makes no network requests.</p>
-        <div class="actions">
-          <a class="download" href="/download/mac"><span aria-hidden="true">↓</span> Download for Mac</a>
+        <h2 id="install-title" data-reveal>Install <em>BarCut.</em></h2>
+        <p class="lede" data-reveal>For macOS 26 or later on an Apple silicon Mac. BarCut works locally and makes no network requests.</p>
+        <div class="acts" data-reveal>
+          <a class="key cta sq" href="/download/mac">Download for Mac</a>
         </div>
       </div>
-      <ol class="install-steps">
-        <li>Open the downloaded disk image and drag BarCut to Applications.</li>
-        <li>Open BarCut from Applications. Its icon appears in the menu bar.</li>
-        <li>If macOS asks for access to your Desktop, click <strong>Allow</strong> so BarCut can find new screenshots in the default screenshot folder.</li>
+      <ol class="steps">
+        <li data-reveal>Open the downloaded disk image and drag BarCut to Applications.</li>
+        <li data-reveal>Open BarCut from Applications. Its icon appears in the menu bar.</li>
+        <li data-reveal>If macOS asks for access to your Desktop, click <strong>Allow</strong> so BarCut can find new screenshots in the default screenshot folder.</li>
       </ol>
-    </section>
-  </main>
+    </div>
+  </section>
+</main>
 
-  <footer>
-    <p>BarCut · MIT license · Made by <a href="https://williamlarsten.com">William Larsten</a></p>
+<footer class="deep">
+  <div class="wrap">
+    <span class="copy">BarCut · MIT license · Made by <a class="link" href="https://williamlarsten.com">William Larsten</a></span>
     <nav aria-label="Footer">
-      <a href="https://see.computer">See for dictation and screen capture&nbsp;↗</a>
-      <a href="https://github.com/Willayam/barcut/releases/latest">Releases&nbsp;↗</a>
+      <a href="https://see.computer"><span><b>See</b> for dictation and screen capture</span></a>
+      <a href="https://github.com/Willayam/barcut/releases/latest">Releases</a>
     </nav>
-  </footer>
-</div>
+  </div>
+  <p class="word" aria-hidden="true">Snap, <em>paste.</em></p>
+</footer>
 </body>
 </html>
