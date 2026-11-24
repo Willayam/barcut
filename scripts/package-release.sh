@@ -26,10 +26,12 @@ xcrun stapler staple BarCut.app
 xcrun stapler validate BarCut.app
 spctl --assess --type execute BarCut.app
 
-mkdir -p release "$work/disk"
-ditto BarCut.app "$work/disk/BarCut.app"
-ln -s /Applications "$work/disk/Applications"
-hdiutil create -ov -volname BarCut -srcfolder "$work/disk" -format UDZO release/BarCut.dmg
+mkdir -p release
+# dmgbuild writes the installer window's background and icon layout without driving Finder.
+python3 -m venv "$work/venv"
+"$work/venv/bin/pip" install --quiet dmgbuild==1.6.5
+rm -f release/BarCut.dmg
+"$work/venv/bin/dmgbuild" -s scripts/dmg-settings.py -D app=BarCut.app BarCut release/BarCut.dmg
 codesign --force --timestamp --sign "$CODESIGN_IDENTITY" release/BarCut.dmg
 notarize release/BarCut.dmg
 xcrun stapler staple release/BarCut.dmg

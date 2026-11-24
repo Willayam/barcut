@@ -18,6 +18,8 @@
     <string>26.0</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright 2026 William Larsten. MIT licensed.</string>
     <key>LSUIElement</key>
