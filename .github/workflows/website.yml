@@ -15,7 +15,6 @@ concurrency:
 
 jobs:
   deploy:
-    if: vars.CLOUDFLARE_ACCOUNT_ID != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -24,6 +23,6 @@ jobs:
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.164.0"
           command: deploy

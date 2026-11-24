@@ -49,10 +49,6 @@ password).
 
 ## Deploy barcut.app
 
-The Cloudflare Worker serves `site/`. To enable deployment from this repository, set the
-`CLOUDFLARE_ACCOUNT_ID` Actions variable and the `CLOUDFLARE_API_TOKEN` secret. The Website
-workflow checks that the latest release includes `BarCut.dmg` before publishing.
-
-For version 1.2.0, the signing and website jobs ran in the see.computer repository, which holds
-the shared credentials. Both jobs checked out the same pinned BarCut commit. The release job
-returned the notarized DMG and zip as artifacts for publication in the BarCut repository.
+The Cloudflare Worker serves `site/`. A merge to `main` that changes `site/` or `wrangler.toml`
+starts the Website workflow, which checks that the latest release includes `BarCut.dmg` and then
+deploys. It needs the GitHub Actions secrets `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
