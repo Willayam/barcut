@@ -1,19 +1,51 @@
 name: Release
 
+# A merge to main that changes the app builds, signs, notarizes and publishes a release.
+# The release takes the version in Info.plist, or the last release plus one patch when that
+# version is already out. Run the workflow by hand to publish main without an app change.
+
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths:
+      - "Sources/**"
+      - "Assets/**"
+      - "Info.plist"
+      - "Package.swift"
+      - "scripts/build-app.sh"
+      - "scripts/package-release.sh"
+      - "scripts/dmg-settings.py"
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+# A second merge waits here, so it numbers itself after the release in front of it.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
+    if: github.ref == 'refs/heads/main'
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
-      - name: Check tag and app version
-        run: test "${GITHUB_REF_NAME#v}" = "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)"
+        with:
+          fetch-depth: 0
+      - name: Pick the version and write it into the build
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          committed=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)
+          released=$(gh release view --json tagName --jq .tagName)
+          IFS=. read -r major minor patch <<< "${released#v}"
+          version=$(printf '%s\n' "$committed" "$major.$minor.$((patch + 1))" | sort -V | tail -n 1)
+          # The build number is the commit count, so it rises with every release.
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" \
+            -c "Set :CFBundleVersion $(git rev-list --count HEAD)" Info.plist
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
       - name: Import Developer ID Application certificate
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -45,4 +77,8 @@ jobs:
       - name: Publish verified installer
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release/* --generate-notes --verify-tag
+          tag: ${{ steps.version.outputs.tag }}
+        run: |
+          gh release create "$tag" release/* --generate-notes --target "$GITHUB_SHA"
+          test "$(gh release view --json tagName --jq .tagName)" = "$tag"
+          curl -fsSLI --retry 5 --retry-delay 5 https://github.com/Willayam/barcut/releases/latest/download/BarCut.dmg > /dev/null
