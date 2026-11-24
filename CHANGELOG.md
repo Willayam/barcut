@@ -2,6 +2,11 @@
 
 This project follows semantic versioning. Release dates use ISO 8601 format.
 
+## 1.2.1 - 2026-11-24
+
+- New app icon, with light, dark and tinted versions.
+- The installer window now shows where to drag BarCut.
+
 ## 1.2.0
 
 - Added a drag-to-Applications disk image for Mac downloads.
